@@ -103,18 +103,11 @@
     .btn-block { width: 100%; }
     .btn-sm { padding: 8px 14px; font-size: 0.85rem; border-radius: 12px; }
     .hidden { display: none !important; }
-    .call-card {
-      border-left: 4px solid var(--purple);
-    }
+    .call-card { border-left: 4px solid var(--purple); }
     .call-card.cancelled { opacity: 0.55; border-left-color: var(--text-secondary); }
     .call-title { font-size: 1.1rem; font-weight: 800; margin: 0 0 4px; }
     .call-meta { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 12px; }
-    .stats {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      margin: 12px 0;
-    }
+    .stats { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
     .stat { text-align: center; min-width: 64px; }
     .stat-num { font-size: 1.75rem; font-weight: 800; line-height: 1.1; }
     .stat-num.yes { color: var(--accent); }
@@ -124,7 +117,6 @@
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
     .error { color: var(--fail); font-size: 0.9rem; margin-top: 8px; }
     .success { color: var(--accent); font-size: 0.9rem; margin-top: 8px; }
-    .login-logo { font-size: 2rem; margin-bottom: 8px; }
     a.link { color: var(--accent); word-break: break-all; }
     .empty { color: var(--text-secondary); text-align: center; padding: 24px; }
     #statusBar {
@@ -146,30 +138,15 @@
       margin-left: 8px;
       vertical-align: middle;
     }
+    #bootStatus { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 12px; }
   </style>
 </head>
 <body>
-  <div id="loginScreen" class="wrap">
-    <div class="card">
-      <div class="login-logo">🤹</div>
-      <h1>Schedule</h1>
-      <p class="subtitle">Schedule sessions for Fly Juggle. Data syncs to the app calendar.</p>
-      <label for="supabaseUrl">Supabase project URL</label>
-      <input id="supabaseUrl" type="url" value="https://clpkwzxejdgvifiakdra.supabase.co" placeholder="https://xxxx.supabase.co" autocomplete="url">
-      <label for="serviceKey">Service role key</label>
-      <input id="serviceKey" type="password" placeholder="eyJ..." autocomplete="off">
-      <p style="font-size:0.8rem;color:var(--text-secondary);margin:-8px 0 14px;">
-        Find this in Supabase → Project Settings → API → <code>service_role</code> (keep secret).
-      </p>
-      <button type="button" class="btn btn-block" id="loginBtn">Open dashboard</button>
-      <p id="loginError" class="error hidden"></p>
-    </div>
-  </div>
-
-  <div id="appScreen" class="wrap hidden">
+  <div id="appScreen" class="wrap">
     <div id="statusBar">
       <h1>Schedule <span class="pill">Live</span></h1>
       <p class="subtitle">Sessions appear in the Progress tab calendar for premium users.</p>
+      <p id="bootStatus">Connecting…</p>
     </div>
 
     <div class="card">
@@ -194,7 +171,7 @@
         </div>
         <div>
           <label for="meetLink">Google Meet link</label>
-          <input id="meetLink" type="url" placeholder="https://meet.google.com/..." required>
+          <input id="meetLink" type="url" value="https://meet.google.com/lookup/flyjuggle-coach" required>
         </div>
       </div>
       <label for="notes">Notes (optional)</label>
@@ -209,66 +186,30 @@
       <div id="callsList"></div>
       <p id="callsEmpty" class="empty hidden">No calls scheduled yet.</p>
     </div>
-
-    <button type="button" class="btn btn-secondary btn-sm" id="logoutBtn">Sign out</button>
   </div>
 
   <script>
-    const STORAGE_URL = 'jj_coaching_supabase_url';
-    const STORAGE_KEY = 'jj_coaching_service_key';
+    const CONFIG = {
+      url: 'https://clpkwzxejdgvifiakdra.supabase.co',
+      serviceRoleKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscGt3enhlamRndmlmaWFrZHJhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTM3MTU1NCwiZXhwIjoyMDk0OTQ3NTU0fQ.Iq9py3elbfd9wSHjDa9f6F4NoFmXalYb3IoSN4Tmvis',
+    };
 
     let supabase = null;
-
     const $ = (id) => document.getElementById(id);
 
-    function showLoginError(msg) {
-      const el = $('loginError');
-      el.textContent = msg;
-      el.classList.toggle('hidden', !msg);
-    }
-
-    function initClient(url, key) {
-      supabase = window.supabase.createClient(url.trim(), key.trim(), {
+    function initClient() {
+      supabase = window.supabase.createClient(CONFIG.url, CONFIG.serviceRoleKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
     }
 
     function enterApp() {
-      $('loginScreen').classList.add('hidden');
-      $('appScreen').classList.remove('hidden');
+      $('bootStatus').textContent = 'Connected';
       const today = new Date();
       $('callDate').value = today.toISOString().slice(0, 10);
       $('callTime').value = '15:00';
       loadCalls();
     }
-
-    $('loginBtn').addEventListener('click', async () => {
-      showLoginError('');
-      const url = $('supabaseUrl').value.trim();
-      const key = $('serviceKey').value.trim();
-      if (!url || !key) {
-        showLoginError('Enter Supabase URL and service role key.');
-        return;
-      }
-      try {
-        initClient(url, key);
-        const { error } = await supabase.from('coaching_calls').select('id').limit(1);
-        if (error) throw error;
-        localStorage.setItem(STORAGE_URL, url);
-        localStorage.setItem(STORAGE_KEY, key);
-        enterApp();
-      } catch (e) {
-        showLoginError(e.message || 'Could not connect to Supabase.');
-      }
-    });
-
-    $('logoutBtn').addEventListener('click', () => {
-      localStorage.removeItem(STORAGE_KEY);
-      supabase = null;
-      $('appScreen').classList.add('hidden');
-      $('loginScreen').classList.remove('hidden');
-      $('serviceKey').value = '';
-    });
 
     function formatWhen(iso) {
       const d = new Date(iso);
@@ -423,21 +364,21 @@
     });
 
     async function cancelCall(id) {
-      if (!confirm('Cancel this coaching call? It will be hidden from the app calendar.')) return;
+      if (!confirm('Cancel this call? It will be hidden from the app calendar.')) return;
       const { error } = await supabase.from('coaching_calls').update({ is_cancelled: true }).eq('id', id);
       if (error) alert(error.message);
       else await loadCalls();
     }
 
-    (function boot() {
-      const url = localStorage.getItem(STORAGE_URL);
-      const key = localStorage.getItem(STORAGE_KEY);
-      if (url) $('supabaseUrl').value = url;
-      if (url && key) {
-        initClient(url, key);
-        supabase.from('coaching_calls').select('id').limit(1).then(({ error }) => {
-          if (!error) enterApp();
-        });
+    (async function boot() {
+      try {
+        initClient();
+        const { error } = await supabase.from('coaching_calls').select('id').limit(1);
+        if (error) throw error;
+        enterApp();
+      } catch (e) {
+        $('bootStatus').textContent = 'Could not connect: ' + (e.message || e);
+        $('bootStatus').className = 'error';
       }
     })();
   </script>
