@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Fly Juggle — Schedule</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #121820;
+      --surface: #1E272C;
+      --surface-raised: #283339;
+      --accent: #58CC02;
+      --accent-strong: #41990A;
+      --text: #ffffff;
+      --text-secondary: #9EADB8;
+      --purple: #9E4FDE;
+      --fail: #FF4545;
+      --border: rgba(255,255,255,0.08);
+      --radius: 20px;
+      --radius-sm: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.75rem; font-weight: 800; margin: 0 0 4px; letter-spacing: -0.02em; }
+    .subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 24px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+    }
+    .card h2 {
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin: 0 0 14px;
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-raised);
+      color: var(--text);
+      font-size: 1rem;
+      margin-bottom: 14px;
+      font-family: inherit;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 520px) { .row { grid-template-columns: 1fr; } }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 16px;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      font-family: inherit;
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 5px 0 var(--accent-strong);
+      transition: transform 0.08s;
+    }
+    .btn:active { transform: translateY(2px); box-shadow: 0 3px 0 var(--accent-strong); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-secondary {
+      background: var(--surface-raised);
+      box-shadow: 0 5px 0 #1a2228;
+      color: var(--text-secondary);
+    }
+    .btn-danger {
+      background: var(--fail);
+      box-shadow: 0 5px 0 #cc3333;
+    }
+    .btn-block { width: 100%; }
+    .btn-sm { padding: 8px 14px; font-size: 0.85rem; border-radius: 12px; }
+    .hidden { display: none !important; }
+    .call-card {
+      border-left: 4px solid var(--purple);
+    }
+    .call-card.cancelled { opacity: 0.55; border-left-color: var(--text-secondary); }
+    .call-title { font-size: 1.1rem; font-weight: 800; margin: 0 0 4px; }
+    .call-meta { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 12px; }
+    .stats {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin: 12px 0;
+    }
+    .stat { text-align: center; min-width: 64px; }
+    .stat-num { font-size: 1.75rem; font-weight: 800; line-height: 1.1; }
+    .stat-num.yes { color: var(--accent); }
+    .stat-num.no { color: var(--fail); }
+    .stat-num.muted { color: var(--text-secondary); font-size: 1.2rem; }
+    .stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .error { color: var(--fail); font-size: 0.9rem; margin-top: 8px; }
+    .success { color: var(--accent); font-size: 0.9rem; margin-top: 8px; }
+    .login-logo { font-size: 2rem; margin-bottom: 8px; }
+    a.link { color: var(--accent); word-break: break-all; }
+    .empty { color: var(--text-secondary); text-align: center; padding: 24px; }
+    #statusBar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg);
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      background: var(--purple);
+      color: #fff;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div id="loginScreen" class="wrap">
+    <div class="card">
+      <div class="login-logo">🤹</div>
+      <h1>Schedule</h1>
+      <p class="subtitle">Schedule sessions for Fly Juggle. Data syncs to the app calendar.</p>
+      <label for="supabaseUrl">Supabase project URL</label>
+      <input id="supabaseUrl" type="url" value="https://clpkwzxejdgvifiakdra.supabase.co" placeholder="https://xxxx.supabase.co" autocomplete="url">
+      <label for="serviceKey">Service role key</label>
+      <input id="serviceKey" type="password" placeholder="eyJ..." autocomplete="off">
+      <p style="font-size:0.8rem;color:var(--text-secondary);margin:-8px 0 14px;">
+        Find this in Supabase → Project Settings → API → <code>service_role</code> (keep secret).
+      </p>
+      <button type="button" class="btn btn-block" id="loginBtn">Open dashboard</button>
+      <p id="loginError" class="error hidden"></p>
+    </div>
+  </div>
+
+  <div id="appScreen" class="wrap hidden">
+    <div id="statusBar">
+      <h1>Schedule <span class="pill">Live</span></h1>
+      <p class="subtitle">Sessions appear in the Progress tab calendar for premium users.</p>
+    </div>
+
+    <div class="card">
+      <h2 id="formTitle">Schedule a call</h2>
+      <input type="hidden" id="editId">
+      <label for="title">Title</label>
+      <input id="title" type="text" value="Coaching Call" maxlength="120">
+      <div class="row">
+        <div>
+          <label for="callDate">Date</label>
+          <input id="callDate" type="date" required>
+        </div>
+        <div>
+          <label for="callTime">Time</label>
+          <input id="callTime" type="time" required>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="duration">Duration (minutes)</label>
+          <input id="duration" type="number" min="15" max="240" value="60">
+        </div>
+        <div>
+          <label for="meetLink">Google Meet link</label>
+          <input id="meetLink" type="url" placeholder="https://meet.google.com/..." required>
+        </div>
+      </div>
+      <label for="notes">Notes (optional)</label>
+      <textarea id="notes" placeholder="Warm-up focus, Q&A, etc."></textarea>
+      <button type="button" class="btn btn-block" id="saveBtn">Save call</button>
+      <button type="button" class="btn btn-secondary btn-block hidden" id="cancelEditBtn" style="margin-top:10px;">Cancel edit</button>
+      <p id="formMessage" class="hidden"></p>
+    </div>
+
+    <div class="card">
+      <h2>Upcoming &amp; past calls</h2>
+      <div id="callsList"></div>
+      <p id="callsEmpty" class="empty hidden">No calls scheduled yet.</p>
+    </div>
+
+    <button type="button" class="btn btn-secondary btn-sm" id="logoutBtn">Sign out</button>
+  </div>
+
+  <script>
+    const STORAGE_URL = 'jj_coaching_supabase_url';
+    const STORAGE_KEY = 'jj_coaching_service_key';
+
+    let supabase = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    function showLoginError(msg) {
+      const el = $('loginError');
+      el.textContent = msg;
+      el.classList.toggle('hidden', !msg);
+    }
+
+    function initClient(url, key) {
+      supabase = window.supabase.createClient(url.trim(), key.trim(), {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+    }
+
+    function enterApp() {
+      $('loginScreen').classList.add('hidden');
+      $('appScreen').classList.remove('hidden');
+      const today = new Date();
+      $('callDate').value = today.toISOString().slice(0, 10);
+      $('callTime').value = '15:00';
+      loadCalls();
+    }
+
+    $('loginBtn').addEventListener('click', async () => {
+      showLoginError('');
+      const url = $('supabaseUrl').value.trim();
+      const key = $('serviceKey').value.trim();
+      if (!url || !key) {
+        showLoginError('Enter Supabase URL and service role key.');
+        return;
+      }
+      try {
+        initClient(url, key);
+        const { error } = await supabase.from('coaching_calls').select('id').limit(1);
+        if (error) throw error;
+        localStorage.setItem(STORAGE_URL, url);
+        localStorage.setItem(STORAGE_KEY, key);
+        enterApp();
+      } catch (e) {
+        showLoginError(e.message || 'Could not connect to Supabase.');
+      }
+    });
+
+    $('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_KEY);
+      supabase = null;
+      $('appScreen').classList.add('hidden');
+      $('loginScreen').classList.remove('hidden');
+      $('serviceKey').value = '';
+    });
+
+    function formatWhen(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+    }
+
+    function endTime(iso, mins) {
+      const d = new Date(iso);
+      d.setMinutes(d.getMinutes() + mins);
+      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+
+    async function loadRSVPStats(callId) {
+      const { data, error } = await supabase
+        .from('coaching_call_rsvps')
+        .select('attending')
+        .eq('coaching_call_id', callId);
+      if (error) return { yes: 0, no: 0, total: 0 };
+      const yes = data.filter((r) => r.attending).length;
+      const no = data.filter((r) => !r.attending).length;
+      return { yes, no, total: data.length };
+    }
+
+    async function loadCalls() {
+      const list = $('callsList');
+      list.innerHTML = '<p class="empty">Loading…</p>';
+      const { data: calls, error } = await supabase
+        .from('coaching_calls')
+        .select('*')
+        .order('scheduled_at', { ascending: false });
+      if (error) {
+        list.innerHTML = `<p class="error">${error.message}</p>`;
+        return;
+      }
+      if (!calls.length) {
+        list.innerHTML = '';
+        $('callsEmpty').classList.remove('hidden');
+        return;
+      }
+      $('callsEmpty').classList.add('hidden');
+      list.innerHTML = '';
+      for (const call of calls) {
+        const stats = await loadRSVPStats(call.id);
+        const card = document.createElement('div');
+        card.className = 'card call-card' + (call.is_cancelled ? ' cancelled' : '');
+        const start = formatWhen(call.scheduled_at);
+        const end = endTime(call.scheduled_at, call.duration_minutes);
+        card.innerHTML = `
+          <p class="call-title">${escapeHtml(call.title)}${call.is_cancelled ? ' (cancelled)' : ''}</p>
+          <p class="call-meta">${start} – ${end} · ${call.duration_minutes} min</p>
+          <p class="call-meta"><a class="link" href="${escapeHtml(call.google_meet_link)}" target="_blank" rel="noopener">${escapeHtml(call.google_meet_link)}</a></p>
+          ${call.notes ? `<p class="call-meta">${escapeHtml(call.notes)}</p>` : ''}
+          <div class="stats">
+            <div class="stat"><div class="stat-num yes">${stats.yes}</div><div class="stat-label">Attending</div></div>
+            <div class="stat"><div class="stat-num no">${stats.no}</div><div class="stat-label">Not attending</div></div>
+            <div class="stat"><div class="stat-num muted">${stats.total}</div><div class="stat-label">Responses</div></div>
+          </div>
+          <div class="actions">
+            ${call.is_cancelled ? '' : `<button type="button" class="btn btn-sm btn-secondary" data-edit="${call.id}">Edit</button>`}
+            ${call.is_cancelled ? '' : `<button type="button" class="btn btn-sm btn-danger" data-cancel="${call.id}">Cancel call</button>`}
+          </div>
+        `;
+        list.appendChild(card);
+      }
+      list.querySelectorAll('[data-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => startEdit(btn.dataset.edit, calls));
+      });
+      list.querySelectorAll('[data-cancel]').forEach((btn) => {
+        btn.addEventListener('click', () => cancelCall(btn.dataset.cancel));
+      });
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function startEdit(id, calls) {
+      const call = calls.find((c) => c.id === id);
+      if (!call) return;
+      $('editId').value = id;
+      $('formTitle').textContent = 'Edit call';
+      $('title').value = call.title;
+      const d = new Date(call.scheduled_at);
+      $('callDate').value = d.toISOString().slice(0, 10);
+      $('callTime').value = d.toTimeString().slice(0, 5);
+      $('duration').value = call.duration_minutes;
+      $('meetLink').value = call.google_meet_link;
+      $('notes').value = call.notes || '';
+      $('cancelEditBtn').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    $('cancelEditBtn').addEventListener('click', resetForm);
+
+    function resetForm() {
+      $('editId').value = '';
+      $('formTitle').textContent = 'Schedule a call';
+      $('title').value = 'Coaching Call';
+      $('notes').value = '';
+      $('cancelEditBtn').classList.add('hidden');
+      $('formMessage').classList.add('hidden');
+    }
+
+    $('saveBtn').addEventListener('click', async () => {
+      const msg = $('formMessage');
+      msg.classList.add('hidden');
+      const date = $('callDate').value;
+      const time = $('callTime').value;
+      const link = $('meetLink').value.trim();
+      if (!date || !time || !link) {
+        msg.textContent = 'Date, time, and Meet link are required.';
+        msg.className = 'error';
+        msg.classList.remove('hidden');
+        return;
+      }
+      const scheduledAt = new Date(`${date}T${time}`).toISOString();
+      const payload = {
+        title: $('title').value.trim() || 'Coaching Call',
+        scheduled_at: scheduledAt,
+        duration_minutes: parseInt($('duration').value, 10) || 60,
+        google_meet_link: link,
+        notes: $('notes').value.trim() || null,
+        is_cancelled: false,
+      };
+      $('saveBtn').disabled = true;
+      try {
+        const editId = $('editId').value;
+        if (editId) {
+          const { error } = await supabase.from('coaching_calls').update(payload).eq('id', editId);
+          if (error) throw error;
+          msg.textContent = 'Call updated.';
+        } else {
+          const { error } = await supabase.from('coaching_calls').insert(payload);
+          if (error) throw error;
+          msg.textContent = 'Call scheduled.';
+        }
+        msg.className = 'success';
+        msg.classList.remove('hidden');
+        resetForm();
+        await loadCalls();
+      } catch (e) {
+        msg.textContent = e.message || 'Save failed.';
+        msg.className = 'error';
+        msg.classList.remove('hidden');
+      }
+      $('saveBtn').disabled = false;
+    });
+
+    async function cancelCall(id) {
+      if (!confirm('Cancel this coaching call? It will be hidden from the app calendar.')) return;
+      const { error } = await supabase.from('coaching_calls').update({ is_cancelled: true }).eq('id', id);
+      if (error) alert(error.message);
+      else await loadCalls();
+    }
+
+    (function boot() {
+      const url = localStorage.getItem(STORAGE_URL);
+      const key = localStorage.getItem(STORAGE_KEY);
+      if (url) $('supabaseUrl').value = url;
+      if (url && key) {
+        initClient(url, key);
+        supabase.from('coaching_calls').select('id').limit(1).then(({ error }) => {
+          if (!error) enterApp();
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
