@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
   <title>Fly Juggle — Schedule</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
   <style>
     :root {
       --bg: #121820;
@@ -207,12 +207,49 @@
     const SUPABASE_URL = 'https://clpkwzxejdgvifiakdra.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscGt3enhlamRndmlmaWFrZHJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzE1NTQsImV4cCI6MjA5NDk0NzU1NH0.ZBk2y5kI3b7FTHTUc-uNXg1bALEDjYKQRscR-11pylc';
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true },
-    });
-
+    let supabase;
     let cachedCalls = [];
+    let bootDone = false;
     const $ = (id) => document.getElementById(id);
+
+    function finishBoot(session) {
+      if (bootDone) return;
+      bootDone = true;
+      if (session) enterApp();
+      else showLogin();
+    }
+
+    function initSupabase() {
+      if (!window.supabase?.createClient) {
+        $('loadingScreen').innerHTML = '<p class="error" style="text-align:center;padding:48px 16px;">Could not load sign-in. Try refreshing the page.</p>';
+        return;
+      }
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false,
+        },
+      });
+      supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'INITIAL_SESSION') {
+          finishBoot(session);
+          return;
+        }
+        if (!bootDone) return;
+        if (session) enterApp();
+        else showLogin();
+      });
+      setTimeout(async () => {
+        if (bootDone) return;
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          finishBoot(session);
+        } catch {
+          finishBoot(null);
+        }
+      }, 2500);
+    }
 
     function showLoginError(msg) {
       const el = $('loginError');
@@ -415,17 +452,7 @@
       showLogin();
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) enterApp();
-      else if (!$('loadingScreen').classList.contains('hidden')) return;
-      else showLogin();
-    });
-
-    (async function boot() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) enterApp();
-      else showLogin();
-    })();
+    initSupabase();
   </script>
 </body>
 </html>
