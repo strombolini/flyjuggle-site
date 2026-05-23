@@ -143,11 +143,9 @@
     <div class="card">
       <div class="login-logo">🤹</div>
       <h1>Coach schedule</h1>
-      <p class="subtitle">Sign in with the email and password we sent you.</p>
-      <label for="loginEmail">Email</label>
-      <input id="loginEmail" type="email" autocomplete="username" placeholder="you@example.com">
+      <p class="subtitle">Enter your coach password to continue.</p>
       <label for="loginPassword">Password</label>
-      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Your password">
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password">
       <button type="button" class="btn btn-block" id="loginBtn">Sign in</button>
       <p id="loginError" class="error hidden"></p>
     </div>
@@ -206,6 +204,7 @@
   <script>
     const SUPABASE_URL = 'https://clpkwzxejdgvifiakdra.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscGt3enhlamRndmlmaWFrZHJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzE1NTQsImV4cCI6MjA5NDk0NzU1NH0.ZBk2y5kI3b7FTHTUc-uNXg1bALEDjYKQRscR-11pylc';
+    const COACH_EMAIL = 'coach@flyjuggle.app';
 
     let supabase;
     let cachedCalls = [];
@@ -429,19 +428,25 @@
       else await loadCalls();
     }
 
+    $('loginPassword').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('loginBtn').click();
+    });
+
     $('loginBtn').addEventListener('click', async () => {
       showLoginError('');
-      const email = $('loginEmail').value.trim();
       const password = $('loginPassword').value;
-      if (!email || !password) {
-        showLoginError('Enter your email and password.');
+      if (!password) {
+        showLoginError('Enter your password.');
         return;
       }
       $('loginBtn').disabled = true;
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: COACH_EMAIL,
+        password,
+      });
       $('loginBtn').disabled = false;
       if (error) {
-        showLoginError('Could not sign in. Check your email and password.');
+        showLoginError('Wrong password. Try again.');
         return;
       }
       enterApp();
