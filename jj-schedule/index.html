@@ -103,6 +103,8 @@
     .call-card.cancelled { opacity: 0.55; border-left-color: var(--text-secondary); }
     .call-title { font-size: 1.1rem; font-weight: 800; margin: 0 0 4px; }
     .call-meta { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 12px; }
+    .call-meta.utc { font-size: 0.82rem; opacity: 0.9; margin-top: -6px; }
+    .tz-hint { font-size: 0.82rem; color: var(--text-secondary); margin: -6px 0 14px; line-height: 1.4; }
     .stats { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
     .stat { text-align: center; min-width: 64px; }
     .stat-num { font-size: 1.75rem; font-weight: 800; line-height: 1.1; }
@@ -177,6 +179,7 @@
           <input id="callTime" type="time" required>
         </div>
       </div>
+      <p id="tzHint" class="tz-hint"></p>
       <div class="row">
         <div>
           <label for="duration">Duration (minutes)</label>
@@ -263,6 +266,7 @@
       const today = new Date();
       $('callDate').value = today.toISOString().slice(0, 10);
       $('callTime').value = '15:00';
+      updateTzHint();
       loadCalls();
     }
 
@@ -272,11 +276,66 @@
       $('loginScreen').classList.remove('hidden');
     }
 
-    function formatWhen(iso) {
-      return new Date(iso).toLocaleString(undefined, {
+    function tzLabel() {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const sample = new Date().toLocaleTimeString(undefined, { timeZoneName: 'short' });
+      const abbr = sample.split(' ').pop() || 'local';
+      return `${zone} (${abbr})`;
+    }
+
+    function localDateParts(d) {
+      return {
+        date: [
+          d.getFullYear(),
+          String(d.getMonth() + 1).padStart(2, '0'),
+          String(d.getDate()).padStart(2, '0'),
+        ].join('-'),
+        time: [
+          String(d.getHours()).padStart(2, '0'),
+          String(d.getMinutes()).padStart(2, '0'),
+        ].join(':'),
+      };
+    }
+
+    function localDateTimeToISO(dateStr, timeStr) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const [hh, mm] = timeStr.split(':').map(Number);
+      return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+    }
+
+    function formatLocalWhen(iso, mins) {
+      const start = new Date(iso);
+      const end = new Date(start.getTime() + mins * 60000);
+      const startStr = start.toLocaleString(undefined, {
         weekday: 'short', month: 'short', day: 'numeric',
         hour: 'numeric', minute: '2-digit',
       });
+      const endStr = end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      return `${startStr} – ${endStr} · ${tzLabel()}`;
+    }
+
+    function formatUTCWhen(iso, mins) {
+      const start = new Date(iso);
+      const end = new Date(start.getTime() + mins * 60000);
+      const opts = {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: false,
+      };
+      const startStr = start.toLocaleString('en-US', opts);
+      const endStr = end.toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: false,
+      });
+      return `${startStr} – ${endStr} UTC`;
+    }
+
+    function updateTzHint() {
+      const el = $('tzHint');
+      if (!el) return;
+      el.textContent = `Date and time use your timezone (${tzLabel()}). App users see the call in their timezone too. UTC is shown below each call.`;
+    }
+
+    function formatWhen(iso, mins) {
+      return formatLocalWhen(iso, mins);
     }
 
     function endTime(iso, mins) {
@@ -324,7 +383,8 @@
         card.className = 'card call-card' + (call.is_cancelled ? ' cancelled' : '');
         card.innerHTML = `
           <p class="call-title">${escapeHtml(call.title)}${call.is_cancelled ? ' (cancelled)' : ''}</p>
-          <p class="call-meta">${formatWhen(call.scheduled_at)} – ${endTime(call.scheduled_at, call.duration_minutes)} · ${call.duration_minutes} min</p>
+          <p class="call-meta">${escapeHtml(formatLocalWhen(call.scheduled_at, call.duration_minutes))}</p>
+          <p class="call-meta utc">${escapeHtml(formatUTCWhen(call.scheduled_at, call.duration_minutes))} · ${call.duration_minutes} min</p>
           <p class="call-meta"><a class="link" href="${escapeHtml(call.google_meet_link)}" target="_blank" rel="noopener">${escapeHtml(call.google_meet_link)}</a></p>
           ${call.notes ? `<p class="call-meta">${escapeHtml(call.notes)}</p>` : ''}
           <div class="stats">
@@ -360,8 +420,9 @@
       $('formTitle').textContent = 'Edit call';
       $('title').value = call.title;
       const d = new Date(call.scheduled_at);
-      $('callDate').value = d.toISOString().slice(0, 10);
-      $('callTime').value = d.toTimeString().slice(0, 5);
+      const parts = localDateParts(d);
+      $('callDate').value = parts.date;
+      $('callTime').value = parts.time;
       $('duration').value = call.duration_minutes;
       $('meetLink').value = call.google_meet_link;
       $('notes').value = call.notes || '';
@@ -394,7 +455,7 @@
       }
       const payload = {
         title: $('title').value.trim() || 'Coaching Call',
-        scheduled_at: new Date(`${date}T${time}`).toISOString(),
+        scheduled_at: localDateTimeToISO(date, time),
         duration_minutes: parseInt($('duration').value, 10) || 60,
         google_meet_link: link,
         notes: $('notes').value.trim() || null,
