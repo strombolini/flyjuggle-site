@@ -58,7 +58,7 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    input, textarea, select {
+    input, textarea {
       width: 100%;
       padding: 12px 14px;
       border-radius: var(--radius-sm);
@@ -87,19 +87,15 @@
       color: #fff;
       background: var(--accent);
       box-shadow: 0 5px 0 var(--accent-strong);
-      transition: transform 0.08s;
     }
     .btn:active { transform: translateY(2px); box-shadow: 0 3px 0 var(--accent-strong); }
-    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
     .btn-secondary {
       background: var(--surface-raised);
       box-shadow: 0 5px 0 #1a2228;
       color: var(--text-secondary);
     }
-    .btn-danger {
-      background: var(--fail);
-      box-shadow: 0 5px 0 #cc3333;
-    }
+    .btn-danger { background: var(--fail); box-shadow: 0 5px 0 #cc3333; }
     .btn-block { width: 100%; }
     .btn-sm { padding: 8px 14px; font-size: 0.85rem; border-radius: 12px; }
     .hidden { display: none !important; }
@@ -113,20 +109,13 @@
     .stat-num.yes { color: var(--accent); }
     .stat-num.no { color: var(--fail); }
     .stat-num.muted { color: var(--text-secondary); font-size: 1.2rem; }
-    .stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
     .error { color: var(--fail); font-size: 0.9rem; margin-top: 8px; }
     .success { color: var(--accent); font-size: 0.9rem; margin-top: 8px; }
     a.link { color: var(--accent); word-break: break-all; }
     .empty { color: var(--text-secondary); text-align: center; padding: 24px; }
-    #statusBar {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      background: var(--bg);
-      padding-bottom: 8px;
-      margin-bottom: 8px;
-    }
+    .login-logo { font-size: 2rem; margin-bottom: 8px; }
     .pill {
       display: inline-block;
       padding: 4px 10px;
@@ -136,31 +125,43 @@
       background: var(--purple);
       color: #fff;
       margin-left: 8px;
-      vertical-align: middle;
     }
-    .login-logo { font-size: 2rem; margin-bottom: 8px; }
+    .sign-out {
+      float: right;
+      margin-top: 4px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
-  <div id="loginScreen" class="wrap">
+  <div id="loginScreen" class="wrap hidden">
     <div class="card">
       <div class="login-logo">🤹</div>
-      <h1>Schedule</h1>
-      <p class="subtitle">Enter your Supabase service role key once — it stays in this browser only, never on GitHub.</p>
-      <label for="serviceKey">Service role key</label>
-      <input id="serviceKey" type="password" placeholder="eyJ..." autocomplete="off">
-      <p style="font-size:0.8rem;color:var(--text-secondary);margin:-8px 0 14px;">
-        Supabase → Project Settings → API → <code>service_role</code>
-      </p>
-      <button type="button" class="btn btn-block" id="loginBtn">Open dashboard</button>
+      <h1>Coach schedule</h1>
+      <p class="subtitle">Sign in with the email and password we sent you.</p>
+      <label for="loginEmail">Email</label>
+      <input id="loginEmail" type="email" autocomplete="username" placeholder="you@example.com">
+      <label for="loginPassword">Password</label>
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Your password">
+      <button type="button" class="btn btn-block" id="loginBtn">Sign in</button>
       <p id="loginError" class="error hidden"></p>
     </div>
   </div>
 
+  <div id="loadingScreen" class="wrap">
+    <p class="subtitle" style="text-align:center;padding:48px 0;">Loading…</p>
+  </div>
+
   <div id="appScreen" class="wrap hidden">
-    <div id="statusBar">
+    <div>
+      <button type="button" class="sign-out" id="signOutBtn">Sign out</button>
       <h1>Schedule <span class="pill">Live</span></h1>
-      <p class="subtitle">Sessions appear in the Progress tab calendar for premium users.</p>
+      <p class="subtitle">Group coaching calls show up in the Fly Juggle app calendar.</p>
     </div>
 
     <div class="card">
@@ -185,7 +186,7 @@
         </div>
         <div>
           <label for="meetLink">Google Meet link</label>
-          <input id="meetLink" type="url" value="https://meet.google.com/lookup/flyjuggle-coach" required>
+          <input id="meetLink" type="url" placeholder="https://meet.google.com/..." required>
         </div>
       </div>
       <label for="notes">Notes (optional)</label>
@@ -200,15 +201,17 @@
       <div id="callsList"></div>
       <p id="callsEmpty" class="empty hidden">No calls scheduled yet.</p>
     </div>
-
-    <button type="button" class="btn btn-secondary btn-sm" id="logoutBtn">Sign out</button>
   </div>
 
   <script>
     const SUPABASE_URL = 'https://clpkwzxejdgvifiakdra.supabase.co';
-    const STORAGE_KEY = 'jj_coaching_service_key';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscGt3enhlamRndmlmaWFrZHJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzE1NTQsImV4cCI6MjA5NDk0NzU1NH0.ZBk2y5kI3b7FTHTUc-uNXg1bALEDjYKQRscR-11pylc';
 
-    let supabase = null;
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    });
+
+    let cachedCalls = [];
     const $ = (id) => document.getElementById(id);
 
     function showLoginError(msg) {
@@ -217,13 +220,8 @@
       el.classList.toggle('hidden', !msg);
     }
 
-    function initClient(key) {
-      supabase = window.supabase.createClient(SUPABASE_URL, key.trim(), {
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
-    }
-
     function enterApp() {
+      $('loadingScreen').classList.add('hidden');
       $('loginScreen').classList.add('hidden');
       $('appScreen').classList.remove('hidden');
       const today = new Date();
@@ -232,9 +230,14 @@
       loadCalls();
     }
 
+    function showLogin() {
+      $('loadingScreen').classList.add('hidden');
+      $('appScreen').classList.add('hidden');
+      $('loginScreen').classList.remove('hidden');
+    }
+
     function formatWhen(iso) {
-      const d = new Date(iso);
-      return d.toLocaleString(undefined, {
+      return new Date(iso).toLocaleString(undefined, {
         weekday: 'short', month: 'short', day: 'numeric',
         hour: 'numeric', minute: '2-digit',
       });
@@ -246,17 +249,6 @@
       return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     }
 
-    async function loadRSVPStats(callId) {
-      const { data, error } = await supabase
-        .from('coaching_call_rsvps')
-        .select('attending')
-        .eq('coaching_call_id', callId);
-      if (error) return { yes: 0, no: 0, total: 0 };
-      const yes = data.filter((r) => r.attending).length;
-      const no = data.filter((r) => !r.attending).length;
-      return { yes, no, total: data.length };
-    }
-
     async function loadCalls() {
       const list = $('callsList');
       list.innerHTML = '<p class="empty">Loading…</p>';
@@ -265,25 +257,38 @@
         .select('*')
         .order('scheduled_at', { ascending: false });
       if (error) {
-        list.innerHTML = `<p class="error">${error.message}</p>`;
+        list.innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
         return;
       }
-      if (!calls.length) {
+      const { data: rsvps } = await supabase.from('coaching_call_rsvps').select('coaching_call_id, attending');
+      const statsByCall = {};
+      for (const row of rsvps ?? []) {
+        const id = row.coaching_call_id;
+        if (!statsByCall[id]) statsByCall[id] = { yes: 0, no: 0, total: 0 };
+        statsByCall[id].total += 1;
+        if (row.attending) statsByCall[id].yes += 1;
+        else statsByCall[id].no += 1;
+      }
+
+      cachedCalls = (calls ?? []).map((c) => ({
+        ...c,
+        rsvp: statsByCall[c.id] ?? { yes: 0, no: 0, total: 0 },
+      }));
+
+      if (!cachedCalls.length) {
         list.innerHTML = '';
         $('callsEmpty').classList.remove('hidden');
         return;
       }
       $('callsEmpty').classList.add('hidden');
       list.innerHTML = '';
-      for (const call of calls) {
-        const stats = await loadRSVPStats(call.id);
+      for (const call of cachedCalls) {
+        const stats = call.rsvp;
         const card = document.createElement('div');
         card.className = 'card call-card' + (call.is_cancelled ? ' cancelled' : '');
-        const start = formatWhen(call.scheduled_at);
-        const end = endTime(call.scheduled_at, call.duration_minutes);
         card.innerHTML = `
           <p class="call-title">${escapeHtml(call.title)}${call.is_cancelled ? ' (cancelled)' : ''}</p>
-          <p class="call-meta">${start} – ${end} · ${call.duration_minutes} min</p>
+          <p class="call-meta">${formatWhen(call.scheduled_at)} – ${endTime(call.scheduled_at, call.duration_minutes)} · ${call.duration_minutes} min</p>
           <p class="call-meta"><a class="link" href="${escapeHtml(call.google_meet_link)}" target="_blank" rel="noopener">${escapeHtml(call.google_meet_link)}</a></p>
           ${call.notes ? `<p class="call-meta">${escapeHtml(call.notes)}</p>` : ''}
           <div class="stats">
@@ -299,7 +304,7 @@
         list.appendChild(card);
       }
       list.querySelectorAll('[data-edit]').forEach((btn) => {
-        btn.addEventListener('click', () => startEdit(btn.dataset.edit, calls));
+        btn.addEventListener('click', () => startEdit(btn.dataset.edit));
       });
       list.querySelectorAll('[data-cancel]').forEach((btn) => {
         btn.addEventListener('click', () => cancelCall(btn.dataset.cancel));
@@ -308,12 +313,12 @@
 
     function escapeHtml(s) {
       const d = document.createElement('div');
-      d.textContent = s;
+      d.textContent = s ?? '';
       return d.innerHTML;
     }
 
-    function startEdit(id, calls) {
-      const call = calls.find((c) => c.id === id);
+    function startEdit(id) {
+      const call = cachedCalls.find((c) => c.id === id);
       if (!call) return;
       $('editId').value = id;
       $('formTitle').textContent = 'Edit call';
@@ -351,37 +356,33 @@
         msg.classList.remove('hidden');
         return;
       }
-      const scheduledAt = new Date(`${date}T${time}`).toISOString();
       const payload = {
         title: $('title').value.trim() || 'Coaching Call',
-        scheduled_at: scheduledAt,
+        scheduled_at: new Date(`${date}T${time}`).toISOString(),
         duration_minutes: parseInt($('duration').value, 10) || 60,
         google_meet_link: link,
         notes: $('notes').value.trim() || null,
         is_cancelled: false,
       };
       $('saveBtn').disabled = true;
-      try {
-        const editId = $('editId').value;
-        if (editId) {
-          const { error } = await supabase.from('coaching_calls').update(payload).eq('id', editId);
-          if (error) throw error;
-          msg.textContent = 'Call updated.';
-        } else {
-          const { error } = await supabase.from('coaching_calls').insert(payload);
-          if (error) throw error;
-          msg.textContent = 'Call scheduled.';
-        }
-        msg.className = 'success';
-        msg.classList.remove('hidden');
-        resetForm();
-        await loadCalls();
-      } catch (e) {
-        msg.textContent = e.message || 'Save failed.';
+      const editId = $('editId').value;
+      const { error } = editId
+        ? await supabase.from('coaching_calls').update(payload).eq('id', editId)
+        : await supabase.from('coaching_calls').insert(payload);
+      $('saveBtn').disabled = false;
+      if (error) {
+        msg.textContent = error.message.includes('policy') || error.code === '42501'
+          ? 'Permission denied — ask Tim to finish coach setup.'
+          : error.message;
         msg.className = 'error';
         msg.classList.remove('hidden');
+        return;
       }
-      $('saveBtn').disabled = false;
+      msg.textContent = editId ? 'Call updated.' : 'Call scheduled.';
+      msg.className = 'success';
+      msg.classList.remove('hidden');
+      resetForm();
+      await loadCalls();
     });
 
     async function cancelCall(id) {
@@ -393,42 +394,37 @@
 
     $('loginBtn').addEventListener('click', async () => {
       showLoginError('');
-      const key = $('serviceKey').value.trim();
-      if (!key) {
-        showLoginError('Paste your service role key.');
+      const email = $('loginEmail').value.trim();
+      const password = $('loginPassword').value;
+      if (!email || !password) {
+        showLoginError('Enter your email and password.');
         return;
       }
-      try {
-        initClient(key);
-        const { error } = await supabase.from('coaching_calls').select('id').limit(1);
-        if (error) throw error;
-        localStorage.setItem(STORAGE_KEY, key);
-        enterApp();
-      } catch (e) {
-        showLoginError(e.message || 'Could not connect to Supabase.');
+      $('loginBtn').disabled = true;
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      $('loginBtn').disabled = false;
+      if (error) {
+        showLoginError('Could not sign in. Check your email and password.');
+        return;
       }
+      enterApp();
     });
 
-    $('logoutBtn').addEventListener('click', () => {
-      localStorage.removeItem(STORAGE_KEY);
-      supabase = null;
-      $('appScreen').classList.add('hidden');
-      $('loginScreen').classList.remove('hidden');
-      $('serviceKey').value = '';
+    $('signOutBtn').addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      showLogin();
+    });
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) enterApp();
+      else if (!$('loadingScreen').classList.contains('hidden')) return;
+      else showLogin();
     });
 
     (async function boot() {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return;
-      $('serviceKey').value = saved;
-      try {
-        initClient(saved);
-        const { error } = await supabase.from('coaching_calls').select('id').limit(1);
-        if (error) throw error;
-        enterApp();
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) enterApp();
+      else showLogin();
     })();
   </script>
 </body>
