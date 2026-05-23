@@ -334,16 +334,6 @@
       el.textContent = `Date and time use your timezone (${tzLabel()}). App users see the call in their timezone too. UTC is shown below each call.`;
     }
 
-    function formatWhen(iso, mins) {
-      return formatLocalWhen(iso, mins);
-    }
-
-    function endTime(iso, mins) {
-      const d = new Date(iso);
-      d.setMinutes(d.getMinutes() + mins);
-      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    }
-
     async function loadCalls() {
       const list = $('callsList');
       list.innerHTML = '<p class="empty">Loading…</p>';
