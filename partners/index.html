@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Fly Juggle — Partner Portal</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
+  <style>
+    :root {
+      --bg: #121820;
+      --surface: #1E272C;
+      --surface-raised: #283339;
+      --accent: #58CC02;
+      --accent-strong: #41990A;
+      --text: #ffffff;
+      --text-secondary: #9EADB8;
+      --purple: #9E4FDE;
+      --warn: #FFB020;
+      --fail: #FF4545;
+      --border: rgba(255,255,255,0.08);
+      --radius: 20px;
+      --radius-sm: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.75rem; font-weight: 800; margin: 0 0 4px; letter-spacing: -0.02em; }
+    .subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 24px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+    }
+    .card h2 {
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin: 0 0 14px;
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-raised);
+      color: var(--text);
+      font-size: 1rem;
+      margin-bottom: 14px;
+      font-family: inherit;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    @media (max-width: 520px) { .row { grid-template-columns: 1fr; } }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 16px;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      font-family: inherit;
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 5px 0 var(--accent-strong);
+      text-decoration: none;
+    }
+    .btn:active { transform: translateY(2px); box-shadow: 0 3px 0 var(--accent-strong); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface-raised);
+      box-shadow: 0 5px 0 #1a2228;
+      color: var(--text-secondary);
+    }
+    .btn-purple {
+      background: var(--purple);
+      box-shadow: 0 5px 0 #6b2fa8;
+    }
+    .btn-block { width: 100%; }
+    .btn-sm { padding: 8px 14px; font-size: 0.85rem; border-radius: 12px; }
+    .hidden { display: none !important; }
+    .error { color: var(--fail); font-size: 0.9rem; margin-top: 8px; }
+    .success { color: var(--accent); font-size: 0.9rem; margin-top: 8px; }
+    .hint { color: var(--text-secondary); font-size: 0.82rem; margin: -6px 0 14px; line-height: 1.4; }
+    .stat { text-align: center; min-width: 64px; }
+    .stat-num { font-size: 1.75rem; font-weight: 800; line-height: 1.1; }
+    .stat-num.yes { color: var(--accent); }
+    .stat-num.purple { color: var(--purple); }
+    .stat-num.muted { color: var(--text-secondary); font-size: 1.2rem; }
+    .stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; }
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      background: var(--surface-raised);
+      color: var(--text-secondary);
+    }
+    .pill.live { background: var(--accent); color: #fff; }
+    .pill.pending { background: var(--warn); color: #121820; }
+    .pill.paid { background: var(--purple); color: #fff; }
+    .pill.fail { background: var(--fail); color: #fff; }
+    .sign-out {
+      float: right;
+      margin-top: 4px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .login-logo { font-size: 2rem; margin-bottom: 8px; }
+    .code-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .code-row:last-child { border-bottom: none; }
+    .code-meta { flex: 1; min-width: 0; }
+    .code-value { font-weight: 800; font-size: 1.05rem; letter-spacing: 0.04em; }
+    .code-link { font-size: 0.78rem; color: var(--text-secondary); word-break: break-all; }
+    .commission-row {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: start;
+    }
+    .commission-row:last-child { border-bottom: none; }
+    .commission-row.flash { animation: flashIn 0.6s ease; }
+    @keyframes flashIn {
+      from { background: rgba(88, 204, 2, 0.15); }
+      to { background: transparent; }
+    }
+    .commission-meta { font-size: 0.85rem; color: var(--text-secondary); }
+    .commission-amount { font-weight: 800; font-size: 1.1rem; text-align: right; }
+    .commission-amount.negative { color: var(--fail); }
+    .empty { color: var(--text-secondary); text-align: center; padding: 24px; }
+    a.link { color: var(--accent); }
+    .header-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .partner-name { color: var(--text-secondary); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div id="loginScreen" class="wrap hidden">
+    <div class="card">
+      <div class="login-logo">🤹</div>
+      <h1>Partner Portal</h1>
+      <p class="subtitle">Sign in with the email address you were invited with. We will send you a magic link.</p>
+      <label for="loginEmail">Email</label>
+      <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com">
+      <button type="button" class="btn btn-block" id="loginBtn">Send magic link</button>
+      <p id="loginMessage" class="hidden"></p>
+    </div>
+  </div>
+
+  <div id="loadingScreen" class="wrap">
+    <p class="subtitle" style="text-align:center;padding:48px 0;">Loading…</p>
+  </div>
+
+  <div id="appScreen" class="wrap hidden">
+    <div>
+      <button type="button" class="sign-out" id="signOutBtn">Sign out</button>
+      <div class="header-row">
+        <h1>Fly Juggle Partners</h1>
+        <span class="pill live" id="livePill">Live</span>
+      </div>
+      <p class="subtitle"><span class="partner-name" id="partnerName"></span> · <span id="partnerRate"></span>% commission on net revenue</p>
+    </div>
+
+    <div class="row" id="balanceRow">
+      <div class="card" style="margin-bottom:14px;text-align:center;">
+        <div class="stat-num yes" id="availableBalance">$0.00</div>
+        <div class="stat-label">Available</div>
+      </div>
+      <div class="card" style="margin-bottom:14px;text-align:center;">
+        <div class="stat-num muted" id="pendingBalance">$0.00</div>
+        <div class="stat-label">Pending</div>
+      </div>
+      <div class="card" style="margin-bottom:14px;text-align:center;">
+        <div class="stat-num purple" id="lifetimeBalance">$0.00</div>
+        <div class="stat-label">Lifetime</div>
+      </div>
+    </div>
+
+    <div class="card" id="payoutCard">
+      <h2>Payouts</h2>
+      <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $20. Commissions unlock 30 days after purchase (refund protection).</p>
+      <div id="payoutActions"></div>
+      <p id="payoutMessage" class="hidden"></p>
+    </div>
+
+    <div class="card">
+      <h2>Your referral codes</h2>
+      <p class="hint">Share these links on Instagram, TikTok, or YouTube. Downloads and subscriptions are tracked automatically.</p>
+      <div id="codesList"></div>
+      <div id="createCodeForm" class="hidden" style="margin-top:14px;">
+        <label for="newCode">New code (4–20 characters)</label>
+        <input id="newCode" type="text" maxlength="20" placeholder="SARAH30" autocapitalize="characters">
+        <button type="button" class="btn btn-block btn-secondary" id="createCodeBtn">Create code</button>
+      </div>
+      <p id="codeMessage" class="hidden"></p>
+    </div>
+
+    <div class="card">
+      <h2>Recent commissions</h2>
+      <div id="commissionsList"></div>
+      <p id="commissionsEmpty" class="empty hidden">No commissions yet. Share your link to start earning.</p>
+    </div>
+
+    <div class="card">
+      <h2>Payout history</h2>
+      <div id="payoutsList"></div>
+      <p id="payoutsEmpty" class="empty hidden">No payouts yet.</p>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://clpkwzxejdgvifiakdra.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscGt3enhlamRndmlmaWFrZHJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzE1NTQsImV4cCI6MjA5NDk0NzU1NH0.ZBk2y5kI3b7FTHTUc-uNXg1bALEDjYKQRscR-11pylc';
+    const FUNCTIONS_BASE = SUPABASE_URL + '/functions/v1';
+
+    let supabase;
+    let dashboard = null;
+    let realtimeChannel = null;
+    let bootDone = false;
+
+    const $ = (id) => document.getElementById(id);
+
+    function money(n) {
+      const v = Number(n) || 0;
+      return '$' + v.toFixed(2);
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s ?? '';
+      return d.innerHTML;
+    }
+
+    function showMessage(el, text, isError) {
+      el.textContent = text;
+      el.className = isError ? 'error' : 'success';
+      el.classList.toggle('hidden', !text);
+    }
+
+    function finishBoot(session) {
+      if (bootDone) return;
+      bootDone = true;
+      if (session) enterApp();
+      else showLogin();
+    }
+
+    function initSupabase() {
+      if (!window.supabase?.createClient) {
+        $('loadingScreen').innerHTML = '<p class="error" style="text-align:center;padding:48px 16px;">Could not load sign-in. Try refreshing.</p>';
+        return;
+      }
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      });
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'INITIAL_SESSION') {
+          finishBoot(session);
+          return;
+        }
+        if (!bootDone) return;
+        if (session) await enterApp();
+        else showLogin();
+      });
+      setTimeout(async () => {
+        if (bootDone) return;
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          finishBoot(session);
+        } catch {
+          finishBoot(null);
+        }
+      }, 2500);
+    }
+
+    function showLogin() {
+      $('loadingScreen').classList.add('hidden');
+      $('appScreen').classList.add('hidden');
+      $('loginScreen').classList.remove('hidden');
+      teardownRealtime();
+    }
+
+    async function linkPartnerAccount() {
+      const { data, error } = await supabase.rpc('affiliate_link_user');
+      if (error) throw new Error(error.message);
+      if (!data?.ok) {
+        throw new Error(data?.error === 'not_invited'
+          ? 'This email is not on the partner list. Contact Fly Juggle to get invited.'
+          : (data?.error || 'link_failed'));
+      }
+      return data;
+    }
+
+    async function fetchDashboard() {
+      const { data, error } = await supabase.rpc('affiliate_partner_dashboard');
+      if (error) throw new Error(error.message);
+      if (data?.error) {
+        throw new Error(data.error === 'not_a_partner'
+          ? 'No partner account found for this email.'
+          : data.error);
+      }
+      return data;
+    }
+
+    function statusPill(status) {
+      const s = (status || '').toLowerCase();
+      if (s === 'available') return '<span class="pill live">Available</span>';
+      if (s === 'pending') return '<span class="pill pending">Pending</span>';
+      if (s === 'paid') return '<span class="pill paid">Paid</span>';
+      if (s === 'reversed') return '<span class="pill fail">Reversed</span>';
+      if (s === 'succeeded') return '<span class="pill paid">Paid</span>';
+      if (s === 'failed') return '<span class="pill fail">Failed</span>';
+      return '<span class="pill">' + escapeHtml(status) + '</span>';
+    }
+
+    function renderDashboard(data, flashNew) {
+      dashboard = data;
+      const p = data.partner;
+      const b = data.balance;
+
+      $('partnerName').textContent = p.display_name || p.email;
+      $('partnerRate').textContent = Math.round(Number(p.commission_rate) * 100);
+      $('availableBalance').textContent = money(b.available_balance);
+      $('pendingBalance').textContent = money(b.pending_balance);
+      $('lifetimeBalance').textContent = money(b.lifetime_earnings);
+
+      const available = Number(b.available_balance) || 0;
+      const payoutActions = $('payoutActions');
+      payoutActions.innerHTML = '';
+
+      if (!p.stripe_account_id) {
+        payoutActions.innerHTML = '<button type="button" class="btn btn-block" id="connectStripeBtn">Connect payout account</button>';
+        $('connectStripeBtn').addEventListener('click', openStripeOnboarding);
+      } else if (!p.stripe_onboarding_complete) {
+        payoutActions.innerHTML = '<button type="button" class="btn btn-block" id="completeStripeBtn">Complete verification</button>' +
+          '<button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" id="stripeDashBtn">Open Stripe</button>';
+        $('completeStripeBtn').addEventListener('click', openStripeOnboarding);
+        $('stripeDashBtn').addEventListener('click', openStripeOnboarding);
+      } else {
+        const disabled = available < 20;
+        payoutActions.innerHTML =
+          '<button type="button" class="btn btn-block" id="withdrawBtn"' + (disabled ? ' disabled' : '') + '>Withdraw ' + money(available) + '</button>' +
+          '<button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" id="stripeDashBtn2">View Stripe Dashboard</button>';
+        if (!disabled) $('withdrawBtn').addEventListener('click', requestWithdrawal);
+        $('stripeDashBtn2').addEventListener('click', openStripeOnboarding);
+      }
+
+      const codes = data.codes || [];
+      const codesList = $('codesList');
+      if (!codes.length) {
+        codesList.innerHTML = '<p class="empty">No codes yet. Create one below.</p>';
+      } else {
+        codesList.innerHTML = codes.map((c) => `
+          <div class="code-row">
+            <div class="code-meta">
+              <div class="code-value">${escapeHtml(c.code)}</div>
+              <div class="code-link">${escapeHtml(c.app_store_url)}</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-secondary" data-copy="${escapeHtml(c.app_store_url)}">Copy</button>
+          </div>
+        `).join('');
+        codesList.querySelectorAll('[data-copy]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(btn.dataset.copy);
+            btn.textContent = 'Copied';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+          });
+        });
+      }
+
+      const activeCodes = codes.filter((c) => c.active !== false).length;
+      $('createCodeForm').classList.toggle('hidden', activeCodes >= 3 || p.status !== 'active');
+
+      const commissions = data.commissions || [];
+      const commList = $('commissionsList');
+      if (!commissions.length) {
+        commList.innerHTML = '';
+        $('commissionsEmpty').classList.remove('hidden');
+      } else {
+        $('commissionsEmpty').classList.add('hidden');
+        commList.innerHTML = commissions.map((c, i) => {
+          const neg = Number(c.commission_usd) < 0;
+          const flash = flashNew && i === 0 ? ' commission-row flash' : ' commission-row';
+          return `
+            <div class="${flash.trim()}">
+              <div>
+                <strong>${escapeHtml(c.event_type)}</strong> ${statusPill(c.status)}
+                <div class="commission-meta">${escapeHtml(new Date(c.created_at).toLocaleString())} · ${escapeHtml(c.product_id || 'subscription')}</div>
+              </div>
+              <div class="commission-amount${neg ? ' negative' : ''}">${neg ? '-' : ''}${money(Math.abs(c.commission_usd))}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      const payouts = data.payouts || [];
+      const payList = $('payoutsList');
+      if (!payouts.length) {
+        payList.innerHTML = '';
+        $('payoutsEmpty').classList.remove('hidden');
+      } else {
+        $('payoutsEmpty').classList.add('hidden');
+        payList.innerHTML = payouts.map((p) => `
+          <div class="commission-row">
+            <div>
+              <strong>${money(p.amount_usd)}</strong> ${statusPill(p.status)}
+              <div class="commission-meta">${escapeHtml(new Date(p.created_at).toLocaleString())}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    async function refreshDashboard(flashNew) {
+      try {
+        const data = await fetchDashboard();
+        renderDashboard(data, flashNew);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to load dashboard';
+        $('payoutMessage').textContent = msg;
+        $('payoutMessage').className = 'error';
+        $('payoutMessage').classList.remove('hidden');
+      }
+    }
+
+    function teardownRealtime() {
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+    }
+
+    function setupRealtime(partnerId) {
+      teardownRealtime();
+      realtimeChannel = supabase
+        .channel('affiliate-commissions-' + partnerId)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'affiliate_commissions',
+            filter: 'partner_id=eq.' + partnerId,
+          },
+          () => refreshDashboard(true),
+        )
+        .subscribe();
+    }
+
+    async function enterApp() {
+      $('loadingScreen').classList.add('hidden');
+      $('loginScreen').classList.add('hidden');
+      $('appScreen').classList.remove('hidden');
+      try {
+        await linkPartnerAccount();
+        const data = await fetchDashboard();
+        renderDashboard(data, false);
+        setupRealtime(data.partner.id);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not load partner account';
+        $('loadingScreen').classList.remove('hidden');
+        $('appScreen').classList.add('hidden');
+        $('loadingScreen').innerHTML = '<p class="error" style="text-align:center;padding:48px 16px;">' + escapeHtml(msg) + '</p>';
+      }
+    }
+
+    async function authHeaders() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not signed in');
+      return {
+        Authorization: 'Bearer ' + session.access_token,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      };
+    }
+
+    async function openStripeOnboarding() {
+      showMessage($('payoutMessage'), '', false);
+      $('connectStripeBtn')?.setAttribute('disabled', 'true');
+      try {
+        const res = await fetch(FUNCTIONS_BASE + '/stripe-connect-onboard', {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: '{}',
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'stripe_failed');
+        if (body.url) window.location.href = body.url;
+      } catch (e) {
+        showMessage($('payoutMessage'), e instanceof Error ? e.message : 'Stripe error', true);
+      } finally {
+        $('connectStripeBtn')?.removeAttribute('disabled');
+      }
+    }
+
+    async function requestWithdrawal() {
+      if (!confirm('Withdraw available balance to your connected Stripe account?')) return;
+      showMessage($('payoutMessage'), 'Processing…', false);
+      $('withdrawBtn')?.setAttribute('disabled', 'true');
+      try {
+        const res = await fetch(FUNCTIONS_BASE + '/affiliate-payout', {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: '{}',
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          if (body.error === 'below_minimum') {
+            throw new Error('Minimum withdrawal is $' + (body.minimum_usd || 20) + '. Available: ' + money(body.available_usd));
+          }
+          throw new Error(body.error || body.message || 'payout_failed');
+        }
+        showMessage($('payoutMessage'), 'Withdrawal sent! ' + money(body.amount_usd) + ' is on its way.', false);
+        await refreshDashboard(false);
+      } catch (e) {
+        showMessage($('payoutMessage'), e instanceof Error ? e.message : 'Payout error', true);
+      } finally {
+        $('withdrawBtn')?.removeAttribute('disabled');
+      }
+    }
+
+    $('loginBtn').addEventListener('click', async () => {
+      const email = $('loginEmail').value.trim().toLowerCase();
+      const msg = $('loginMessage');
+      showMessage(msg, '', false);
+      if (!email) {
+        showMessage(msg, 'Enter your email.', true);
+        return;
+      }
+      $('loginBtn').disabled = true;
+      const redirectTo = window.location.href.split('#')[0];
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: redirectTo },
+      });
+      $('loginBtn').disabled = false;
+      if (error) {
+        showMessage(msg, error.message, true);
+        return;
+      }
+      showMessage(msg, 'Check your email for the sign-in link.', false);
+    });
+
+    $('createCodeBtn').addEventListener('click', async () => {
+      const code = $('newCode').value.trim();
+      const msg = $('codeMessage');
+      showMessage(msg, '', false);
+      if (!code) {
+        showMessage(msg, 'Enter a code.', true);
+        return;
+      }
+      $('createCodeBtn').disabled = true;
+      const { data, error } = await supabase.rpc('affiliate_create_code', { p_code: code });
+      $('createCodeBtn').disabled = false;
+      if (error) {
+        showMessage(msg, error.message, true);
+        return;
+      }
+      if (!data?.ok) {
+        const errMap = {
+          max_codes: 'You already have 3 active codes.',
+          code_taken: 'That code is already taken.',
+          invalid_code: 'Use 4–20 letters, numbers, or underscores.',
+          partner_not_active: 'Your partner account is not active yet.',
+        };
+        showMessage(msg, errMap[data.error] || data.error || 'Could not create code', true);
+        return;
+      }
+      $('newCode').value = '';
+      showMessage(msg, 'Code ' + data.code + ' created.', false);
+      await refreshDashboard(false);
+    });
+
+    $('signOutBtn').addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      showLogin();
+    });
+
+    initSupabase();
+  </script>
+</body>
+</html>
