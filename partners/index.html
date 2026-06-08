@@ -6,6 +6,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Fly Juggle — Partner Portal</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --bg: #121820;
@@ -205,6 +206,63 @@
       cursor: pointer;
       text-transform: uppercase;
     }
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .chart-total {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+    .chart-total-label {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 700;
+    }
+    .chart-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .chart-tab {
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface-raised);
+      color: var(--text-secondary);
+      font-weight: 800;
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .chart-tab.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .chart-wrap {
+      position: relative;
+      height: 220px;
+      margin-top: 8px;
+    }
+    .chart-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -287,6 +345,26 @@
       </div>
     </div>
 
+    <div class="card" id="revenueChartCard">
+      <div class="chart-header">
+        <div>
+          <h2 style="margin-bottom:4px;">Revenue</h2>
+          <div class="chart-total" id="chartPeriodTotal">$0.00</div>
+          <div class="chart-total-label" id="chartPeriodLabel">Last 7 days</div>
+        </div>
+        <div class="chart-tabs" id="chartPeriodTabs">
+          <button type="button" class="chart-tab" data-period="day">Day</button>
+          <button type="button" class="chart-tab active" data-period="week">Week</button>
+          <button type="button" class="chart-tab" data-period="month">Month</button>
+          <button type="button" class="chart-tab" data-period="year">Year</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="revenueChart" aria-label="Revenue over time"></canvas>
+        <p id="chartEmpty" class="chart-empty hidden">No revenue in this period yet.</p>
+      </div>
+    </div>
+
     <div class="card" id="payoutCard">
       <h2>Payouts</h2>
       <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $20. Commissions unlock 30 days after purchase (refund protection).</p>
@@ -328,6 +406,15 @@
     let dashboard = null;
     let realtimeChannel = null;
     let bootDone = false;
+    let revenueChart = null;
+    let chartPeriod = 'week';
+
+    const CHART_PERIOD_LABELS = {
+      day: 'Last 24 hours',
+      week: 'Last 7 days',
+      month: 'Last 30 days',
+      year: 'Last 12 months',
+    };
 
     const $ = (id) => document.getElementById(id);
 
@@ -459,6 +546,121 @@
       return data;
     }
 
+    async function fetchRevenueChart(period) {
+      const { data, error } = await supabase.rpc('affiliate_partner_revenue_chart', {
+        p_period: period,
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) {
+        throw new Error(mapLinkError(data.error) || data.error);
+      }
+      return data;
+    }
+
+    function formatChartLabel(iso, period) {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '';
+      if (period === 'day') {
+        return d.toLocaleTimeString(undefined, { hour: 'numeric' });
+      }
+      if (period === 'year') {
+        return d.toLocaleDateString(undefined, { month: 'short' });
+      }
+      if (period === 'week') {
+        return d.toLocaleDateString(undefined, { weekday: 'short' });
+      }
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    function renderRevenueChart(data) {
+      const period = data.period || chartPeriod;
+      const points = data.points || [];
+      const labels = points.map((p) => formatChartLabel(p.bucket, period));
+      const values = points.map((p) => Number(p.revenue) || 0);
+      const total = Number(data.total_revenue) || 0;
+      const hasRevenue = values.some((v) => v !== 0);
+
+      $('chartPeriodTotal').textContent = money(total);
+      $('chartPeriodLabel').textContent = CHART_PERIOD_LABELS[period] || period;
+      $('chartEmpty').classList.toggle('hidden', hasRevenue);
+
+      const canvas = $('revenueChart');
+      const ctx = canvas.getContext('2d');
+      if (revenueChart) {
+        revenueChart.destroy();
+        revenueChart = null;
+      }
+
+      revenueChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Commission',
+            data: values,
+            backgroundColor: 'rgba(88, 204, 2, 0.85)',
+            borderColor: 'rgba(88, 204, 2, 1)',
+            borderWidth: 1,
+            borderRadius: 6,
+            hoverBackgroundColor: 'rgba(88, 204, 2, 1)',
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ' ' + money(ctx.parsed.y),
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.06)' },
+              ticks: {
+                color: '#9EADB8',
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: period === 'month' ? 8 : (period === 'day' ? 12 : 7),
+              },
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(255,255,255,0.06)' },
+              ticks: {
+                color: '#9EADB8',
+                callback: (v) => '$' + v,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    async function loadRevenueChart(period) {
+      chartPeriod = period;
+      document.querySelectorAll('#chartPeriodTabs .chart-tab').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.period === period);
+      });
+      try {
+        const data = await fetchRevenueChart(period);
+        renderRevenueChart(data);
+      } catch (e) {
+        console.error('Revenue chart error', e);
+      }
+    }
+
+    function setupChartPeriodTabs() {
+      document.querySelectorAll('#chartPeriodTabs .chart-tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const period = btn.dataset.period;
+          if (period && period !== chartPeriod) loadRevenueChart(period);
+        });
+      });
+    }
+
     function statusPill(status) {
       const s = (status || '').toLowerCase();
       if (s === 'available') return '<span class="pill live">Available</span>';
@@ -572,6 +774,7 @@
       try {
         const data = await fetchDashboard();
         renderDashboard(data, flashNew);
+        await loadRevenueChart(chartPeriod);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load dashboard';
         $('payoutMessage').textContent = msg;
@@ -627,6 +830,8 @@
         $('loadingScreen').classList.add('hidden');
         $('appScreen').classList.remove('hidden');
         renderDashboard(data, false);
+        setupChartPeriodTabs();
+        await loadRevenueChart(chartPeriod);
         setupRealtime(data.partner.id);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not load partner account';
