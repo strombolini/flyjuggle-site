@@ -168,6 +168,43 @@
     a.link { color: var(--accent); }
     .header-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
     .partner-name { color: var(--text-secondary); font-weight: 700; }
+    .auth-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface-raised);
+      color: var(--text-secondary);
+      font-weight: 800;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .auth-tab.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      box-shadow: 0 3px 0 var(--accent-strong);
+    }
+    .auth-panel.hidden { display: none; }
+    .password-wrap { position: relative; }
+    .password-toggle {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-weight: 800;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
@@ -175,11 +212,49 @@
     <div class="card">
       <div class="login-logo">🤹</div>
       <h1>Partner Portal</h1>
-      <p class="subtitle">Sign in with the email address you were invited with. We will send you a magic link.</p>
-      <label for="loginEmail">Email</label>
-      <input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com">
-      <button type="button" class="btn btn-block" id="loginBtn">Send magic link</button>
+      <p class="subtitle">Create a free partner account or sign in to track commissions and payouts.</p>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="tabSignIn" data-tab="signin">Sign in</button>
+        <button type="button" class="auth-tab" id="tabSignUp" data-tab="signup">Sign up</button>
+      </div>
+
+      <div id="panelSignIn" class="auth-panel">
+        <label for="signInEmail">Email</label>
+        <input id="signInEmail" type="email" autocomplete="email" placeholder="you@example.com">
+        <label for="signInPassword">Password</label>
+        <div class="password-wrap">
+          <input id="signInPassword" type="password" autocomplete="current-password" placeholder="Your password">
+          <button type="button" class="password-toggle" data-target="signInPassword">Show</button>
+        </div>
+        <button type="button" class="btn btn-block" id="signInBtn">Sign in</button>
+      </div>
+
+      <div id="panelSignUp" class="auth-panel hidden">
+        <label for="signUpName">Display name</label>
+        <input id="signUpName" type="text" autocomplete="name" maxlength="80" placeholder="Your name or brand">
+        <label for="signUpEmail">Email</label>
+        <input id="signUpEmail" type="email" autocomplete="email" placeholder="you@example.com">
+        <label for="signUpPassword">Password</label>
+        <div class="password-wrap">
+          <input id="signUpPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+          <button type="button" class="password-toggle" data-target="signUpPassword">Show</button>
+        </div>
+        <p class="hint">Use 8+ characters with letters and numbers. We will email you a verification link before you can access the dashboard.</p>
+        <button type="button" class="btn btn-block" id="signUpBtn">Create account</button>
+      </div>
+
       <p id="loginMessage" class="hidden"></p>
+    </div>
+  </div>
+
+  <div id="verifyScreen" class="wrap hidden">
+    <div class="card">
+      <div class="login-logo">✉️</div>
+      <h1>Verify your email</h1>
+      <p class="subtitle" id="verifySubtitle">We sent a confirmation link to your inbox. Click it, then return here.</p>
+      <button type="button" class="btn btn-block" id="resendVerifyBtn">Resend verification email</button>
+      <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" id="verifySignOutBtn">Use a different account</button>
+      <p id="verifyMessage" class="hidden"></p>
     </div>
   </div>
 
@@ -273,10 +348,16 @@
       el.classList.toggle('hidden', !text);
     }
 
+    function isEmailVerified(user) {
+      if (!user) return false;
+      return Boolean(user.email_confirmed_at || user.confirmed_at);
+    }
+
     function finishBoot(session) {
       if (bootDone) return;
       bootDone = true;
-      if (session) enterApp();
+      if (session?.user && !isEmailVerified(session.user)) showVerify(session.user.email);
+      else if (session) enterApp();
       else showLogin();
     }
 
@@ -298,7 +379,8 @@
           return;
         }
         if (!bootDone) return;
-        if (session) await enterApp();
+        if (session?.user && !isEmailVerified(session.user)) showVerify(session.user.email);
+        else if (session) await enterApp();
         else showLogin();
       });
       setTimeout(async () => {
@@ -315,18 +397,56 @@
     function showLogin() {
       $('loadingScreen').classList.add('hidden');
       $('appScreen').classList.add('hidden');
+      $('verifyScreen').classList.add('hidden');
       $('loginScreen').classList.remove('hidden');
       teardownRealtime();
     }
 
-    async function linkPartnerAccount() {
-      const { data, error } = await supabase.rpc('affiliate_link_user');
-      if (error) throw new Error(error.message);
-      if (!data?.ok) {
-        throw new Error(data?.error === 'not_invited'
-          ? 'This email is not on the partner list. Contact Fly Juggle to get invited.'
-          : (data?.error || 'link_failed'));
+    function showVerify(email) {
+      $('loadingScreen').classList.add('hidden');
+      $('appScreen').classList.add('hidden');
+      $('loginScreen').classList.add('hidden');
+      $('verifyScreen').classList.remove('hidden');
+      $('verifySubtitle').textContent = email
+        ? 'We sent a confirmation link to ' + email + '. Click it, then return here.'
+        : 'We sent a confirmation link to your inbox. Click it, then return here.';
+      teardownRealtime();
+    }
+
+    function setAuthTab(tab) {
+      const signIn = tab === 'signin';
+      $('tabSignIn').classList.toggle('active', signIn);
+      $('tabSignUp').classList.toggle('active', !signIn);
+      $('panelSignIn').classList.toggle('hidden', !signIn);
+      $('panelSignUp').classList.toggle('hidden', signIn);
+      showMessage($('loginMessage'), '', false);
+    }
+
+    function validatePassword(pw) {
+      if (pw.length < 8) return 'Password must be at least 8 characters.';
+      if (!/[a-zA-Z]/.test(pw) || !/[0-9]/.test(pw)) {
+        return 'Password must include letters and numbers.';
       }
+      return null;
+    }
+
+    function mapLinkError(code) {
+      const map = {
+        email_not_verified: 'Verify your email before continuing.',
+        email_in_use: 'This email is already linked to another account.',
+        account_deactivated: 'This partner account has been deactivated. Contact Fly Juggle.',
+        invalid_display_name: 'Enter a display name (2–80 characters).',
+        not_authenticated: 'Sign in to continue.',
+        registration_conflict: 'Could not create account. Try signing in instead.',
+      };
+      return map[code] || code || 'link_failed';
+    }
+
+    async function linkPartnerAccount(displayName) {
+      const args = displayName ? { p_display_name: displayName } : {};
+      const { data, error } = await supabase.rpc('affiliate_link_user', args);
+      if (error) throw new Error(error.message);
+      if (!data?.ok) throw new Error(mapLinkError(data?.error));
       return data;
     }
 
@@ -334,9 +454,7 @@
       const { data, error } = await supabase.rpc('affiliate_partner_dashboard');
       if (error) throw new Error(error.message);
       if (data?.error) {
-        throw new Error(data.error === 'not_a_partner'
-          ? 'No partner account found for this email.'
-          : data.error);
+        throw new Error(mapLinkError(data.error) || data.error);
       }
       return data;
     }
@@ -487,12 +605,27 @@
     }
 
     async function enterApp() {
-      $('loadingScreen').classList.add('hidden');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        showLogin();
+        return;
+      }
+      if (!isEmailVerified(session.user)) {
+        showVerify(session.user.email);
+        return;
+      }
+
+      $('loadingScreen').classList.remove('hidden');
+      $('loadingScreen').innerHTML = '<p class="subtitle" style="text-align:center;padding:48px 0;">Loading…</p>';
       $('loginScreen').classList.add('hidden');
-      $('appScreen').classList.remove('hidden');
+      $('verifyScreen').classList.add('hidden');
+      $('appScreen').classList.add('hidden');
+
       try {
-        await linkPartnerAccount();
+        await linkPartnerAccount(session.user.user_metadata?.display_name);
         const data = await fetchDashboard();
+        $('loadingScreen').classList.add('hidden');
+        $('appScreen').classList.remove('hidden');
         renderDashboard(data, false);
         setupRealtime(data.partner.id);
       } catch (e) {
@@ -558,26 +691,104 @@
       }
     }
 
-    $('loginBtn').addEventListener('click', async () => {
-      const email = $('loginEmail').value.trim().toLowerCase();
+    $('tabSignIn').addEventListener('click', () => setAuthTab('signin'));
+    $('tabSignUp').addEventListener('click', () => setAuthTab('signup'));
+
+    document.querySelectorAll('.password-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const input = $(btn.dataset.target);
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? 'Hide' : 'Show';
+      });
+    });
+
+    $('signInBtn').addEventListener('click', async () => {
+      const email = $('signInEmail').value.trim().toLowerCase();
+      const password = $('signInPassword').value;
       const msg = $('loginMessage');
       showMessage(msg, '', false);
-      if (!email) {
-        showMessage(msg, 'Enter your email.', true);
+      if (!email || !password) {
+        showMessage(msg, 'Enter email and password.', true);
         return;
       }
-      $('loginBtn').disabled = true;
-      const redirectTo = window.location.href.split('#')[0];
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirectTo },
-      });
-      $('loginBtn').disabled = false;
+      $('signInBtn').disabled = true;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      $('signInBtn').disabled = false;
       if (error) {
         showMessage(msg, error.message, true);
         return;
       }
-      showMessage(msg, 'Check your email for the sign-in link.', false);
+      if (data.user && !isEmailVerified(data.user)) showVerify(email);
+      else await enterApp();
+    });
+
+    $('signUpBtn').addEventListener('click', async () => {
+      const name = $('signUpName').value.trim();
+      const email = $('signUpEmail').value.trim().toLowerCase();
+      const password = $('signUpPassword').value;
+      const msg = $('loginMessage');
+      showMessage(msg, '', false);
+      if (!name || name.length < 2) {
+        showMessage(msg, 'Enter your display name (at least 2 characters).', true);
+        return;
+      }
+      if (!email) {
+        showMessage(msg, 'Enter your email.', true);
+        return;
+      }
+      const pwErr = validatePassword(password);
+      if (pwErr) {
+        showMessage(msg, pwErr, true);
+        return;
+      }
+      $('signUpBtn').disabled = true;
+      const redirectTo = window.location.href.split('#')[0];
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectTo,
+          data: { display_name: name },
+        },
+      });
+      $('signUpBtn').disabled = false;
+      if (error) {
+        showMessage(msg, error.message, true);
+        return;
+      }
+      if (data.user && !isEmailVerified(data.user)) {
+        showVerify(email);
+        return;
+      }
+      await enterApp();
+    });
+
+    $('resendVerifyBtn').addEventListener('click', async () => {
+      const msg = $('verifyMessage');
+      showMessage(msg, '', false);
+      const { data: { user } } = await supabase.auth.getUser();
+      const email = user?.email;
+      if (!email) {
+        showMessage(msg, 'Sign in again to resend verification.', true);
+        showLogin();
+        return;
+      }
+      $('resendVerifyBtn').disabled = true;
+      const redirectTo = window.location.href.split('#')[0];
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo: redirectTo },
+      });
+      $('resendVerifyBtn').disabled = false;
+      if (error) showMessage(msg, error.message, true);
+      else showMessage(msg, 'Verification email sent.', false);
+    });
+
+    $('verifySignOutBtn').addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      showLogin();
     });
 
     $('createCodeBtn').addEventListener('click', async () => {
