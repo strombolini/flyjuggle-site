@@ -297,6 +297,11 @@
           <input id="signUpPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters">
           <button type="button" class="password-toggle" data-target="signUpPassword">Show</button>
         </div>
+        <label for="signUpPasswordConfirm">Confirm password</label>
+        <div class="password-wrap">
+          <input id="signUpPasswordConfirm" type="password" autocomplete="new-password" placeholder="Re-enter your password">
+          <button type="button" class="password-toggle" data-target="signUpPasswordConfirm">Show</button>
+        </div>
         <p class="hint">Use 8+ characters with letters and numbers. We will email you a verification link before you can access the dashboard.</p>
         <button type="button" class="btn btn-block" id="signUpBtn">Create account</button>
       </div>
@@ -1108,6 +1113,11 @@
       const pwErr = validatePassword(password);
       if (pwErr) {
         showMessage(msg, pwErr, true);
+        return;
+      }
+      const confirm = $('signUpPasswordConfirm').value;
+      if (password !== confirm) {
+        showMessage(msg, 'Passwords do not match.', true);
         return;
       }
       $('signUpBtn').disabled = true;
