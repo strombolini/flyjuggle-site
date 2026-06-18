@@ -367,14 +367,14 @@
 
     <div class="card" id="payoutCard">
       <h2>Payouts</h2>
-      <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $20. Commissions unlock 30 days after purchase (refund protection).</p>
+      <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $20. Commissions unlock 14 days after purchase (refund protection).</p>
       <div id="payoutActions"></div>
       <p id="payoutMessage" class="hidden"></p>
     </div>
 
     <div class="card">
       <h2>Your referral codes</h2>
-      <p class="hint">Share these links on Instagram, TikTok, or YouTube. Downloads and subscriptions are tracked automatically.</p>
+      <p class="hint">Share your <strong>smart link</strong> on Instagram, TikTok, or YouTube. When someone taps it and downloads Fly Juggle, you are automatically credited — no code entry required.</p>
       <div id="codesList"></div>
       <div id="createCodeForm" class="hidden" style="margin-top:14px;">
         <label for="newCode">New code (4–20 characters)</label>
@@ -435,6 +435,37 @@
       el.classList.toggle('hidden', !text);
     }
 
+    function mapAuthError(message) {
+      const m = String(message || '').toLowerCase();
+      if (m.includes('rate limit')) {
+        return 'Too many verification emails were sent from this project. Wait about an hour, then use Sign in if you already created an account. If you are stuck, contact Fly Juggle support.';
+      }
+      if (m.includes('already registered') || m.includes('already been registered')) {
+        return 'This email already has an account. Switch to Sign in.';
+      }
+      if (m.includes('invalid login credentials')) {
+        return 'Wrong email or password. If you just signed up, confirm your email first or use the password you chose.';
+      }
+      return message || 'Something went wrong. Try again.';
+    }
+
+    /** Supabase puts email-link failures in the URL hash (#error=...&error_code=otp_expired). */
+    function consumeAuthHashError() {
+      const raw = window.location.hash.replace(/^#/, '');
+      if (!raw || !raw.includes('error=')) return null;
+      const params = new URLSearchParams(raw);
+      const code = params.get('error_code') || '';
+      const desc = decodeURIComponent((params.get('error_description') || '').replace(/\+/g, ' '));
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      if (code === 'otp_expired') {
+        return 'That confirmation link expired or was already used. Use Sign in with your email and password instead of requesting another link right away.';
+      }
+      if (params.get('error') === 'access_denied') {
+        return desc || 'Sign-in link was rejected. Try Sign in with your password.';
+      }
+      return desc || 'Sign-in link failed. Try Sign in with your password.';
+    }
+
     function isEmailVerified(user) {
       if (!user) return false;
       return Boolean(user.email_confirmed_at || user.confirmed_at);
@@ -445,7 +476,7 @@
       bootDone = true;
       if (session?.user && !isEmailVerified(session.user)) showVerify(session.user.email);
       else if (session) enterApp();
-      else showLogin();
+      else showLogin(consumeAuthHashError());
     }
 
     function initSupabase() {
@@ -468,7 +499,7 @@
         if (!bootDone) return;
         if (session?.user && !isEmailVerified(session.user)) showVerify(session.user.email);
         else if (session) await enterApp();
-        else showLogin();
+        else showLogin(consumeAuthHashError());
       });
       setTimeout(async () => {
         if (bootDone) return;
@@ -481,12 +512,16 @@
       }, 2500);
     }
 
-    function showLogin() {
+    function showLogin(authNotice) {
       $('loadingScreen').classList.add('hidden');
       $('appScreen').classList.add('hidden');
       $('verifyScreen').classList.add('hidden');
       $('loginScreen').classList.remove('hidden');
       teardownRealtime();
+      if (authNotice) {
+        setAuthTab('signin');
+        showMessage($('loginMessage'), authNotice, true);
+      }
     }
 
     function showVerify(email) {
@@ -709,20 +744,26 @@
       if (!codes.length) {
         codesList.innerHTML = '<p class="empty">No codes yet. Create one below.</p>';
       } else {
-        codesList.innerHTML = codes.map((c) => `
-          <div class="code-row">
-            <div class="code-meta">
-              <div class="code-value">${escapeHtml(c.code)}</div>
-              <div class="code-link">${escapeHtml(c.app_store_url)}</div>
+        codesList.innerHTML = codes.map((c) => {
+          const shareUrl = c.app_store_url;
+          return `
+            <div class="code-row">
+              <div class="code-meta">
+                <div class="code-value">${escapeHtml(c.code)}</div>
+                <div class="code-link" title="${escapeHtml(shareUrl)}">
+                  🔗 App Store link<br>
+                  <span style="font-size:0.73rem;opacity:0.7;">${escapeHtml(shareUrl)}</span>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-secondary" data-copy="${escapeHtml(shareUrl)}">Copy link</button>
             </div>
-            <button type="button" class="btn btn-sm btn-secondary" data-copy="${escapeHtml(c.app_store_url)}">Copy</button>
-          </div>
-        `).join('');
+          `;
+        }).join('');
         codesList.querySelectorAll('[data-copy]').forEach((btn) => {
           btn.addEventListener('click', async () => {
             await navigator.clipboard.writeText(btn.dataset.copy);
-            btn.textContent = 'Copied';
-            setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
           });
         });
       }
@@ -921,7 +962,7 @@
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       $('signInBtn').disabled = false;
       if (error) {
-        showMessage(msg, error.message, true);
+        showMessage(msg, mapAuthError(error.message), true);
         return;
       }
       if (data.user && !isEmailVerified(data.user)) showVerify(email);
@@ -959,7 +1000,7 @@
       });
       $('signUpBtn').disabled = false;
       if (error) {
-        showMessage(msg, error.message, true);
+        showMessage(msg, mapAuthError(error.message), true);
         return;
       }
       if (data.user && !isEmailVerified(data.user)) {
@@ -987,7 +1028,7 @@
         options: { emailRedirectTo: redirectTo },
       });
       $('resendVerifyBtn').disabled = false;
-      if (error) showMessage(msg, error.message, true);
+      if (error) showMessage(msg, mapAuthError(error.message), true);
       else showMessage(msg, 'Verification email sent.', false);
     });
 
@@ -997,7 +1038,7 @@
     });
 
     $('createCodeBtn').addEventListener('click', async () => {
-      const code = $('newCode').value.trim();
+      const code = $('newCode').value.trim().toUpperCase();
       const msg = $('codeMessage');
       showMessage(msg, '', false);
       if (!code) {
@@ -1005,24 +1046,30 @@
         return;
       }
       $('createCodeBtn').disabled = true;
+      showMessage(msg, 'Creating code…', false);
+
       const { data, error } = await supabase.rpc('affiliate_create_code', { p_code: code });
-      $('createCodeBtn').disabled = false;
       if (error) {
+        $('createCodeBtn').disabled = false;
         showMessage(msg, error.message, true);
         return;
       }
       if (!data?.ok) {
+        $('createCodeBtn').disabled = false;
         const errMap = {
           max_codes: 'You already have 3 active codes.',
           code_taken: 'That code is already taken.',
+          code_reserved: 'That code is reserved. Contact Fly Juggle if you are an official partner.',
           invalid_code: 'Use 4–20 letters, numbers, or underscores.',
           partner_not_active: 'Your partner account is not active yet.',
         };
         showMessage(msg, errMap[data.error] || data.error || 'Could not create code', true);
         return;
       }
+
+      $('createCodeBtn').disabled = false;
       $('newCode').value = '';
-      showMessage(msg, 'Code ' + data.code + ' created.', false);
+      showMessage(msg, `Code ${data.code} created ✓`, false);
       await refreshDashboard(false);
     });
 
