@@ -440,10 +440,29 @@
       return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     }
 
-    async function recoverFromStaleSession(message) {
+    // Remove any persisted Supabase auth token so the NEXT page load starts
+    // clean. Done synchronously against localStorage so it cannot hang.
+    function clearAuthStorage() {
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('sb-') || k.toLowerCase().includes('supabase') || k.includes('auth-token'))) {
+            localStorage.removeItem(k);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Hang-proof recovery: show login IMMEDIATELY, wipe the stale token from
+    // storage, and fire signOut in the background (never awaited — signOut can
+    // itself block on a wedged auth lock).
+    function recoverFromStaleSession(message) {
       bootDone = true;
-      try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {}
       showLogin(message || 'Your session expired. Please sign in again.');
+      clearAuthStorage();
+      try {
+        withTimeout(supabase.auth.signOut({ scope: 'local' }), 3000, 'signout').catch(() => {});
+      } catch (_) {}
     }
 
     function money(n) {
@@ -901,7 +920,7 @@
       try {
         session = await getSessionSafe();
       } catch (_) {
-        await recoverFromStaleSession('Could not verify your session. Please sign in again.');
+        recoverFromStaleSession('Could not verify your session. Please sign in again.');
         return;
       }
       if (!session?.user) {
@@ -910,6 +929,22 @@
       }
       if (!isEmailVerified(session.user)) {
         showVerify(session.user.email);
+        return;
+      }
+
+      // Validate the session SERVER-SIDE before trusting it. A locally-cached
+      // token can outlive the actual user (e.g. account deleted/reset). getUser
+      // hits the auth server and fails fast for a stale token → clean login.
+      try {
+        const { data: { user }, error } = await withTimeout(
+          supabase.auth.getUser(), 6000, 'get_user',
+        );
+        if (error || !user) {
+          recoverFromStaleSession('Your session is no longer valid. Please sign in again.');
+          return;
+        }
+      } catch (_) {
+        recoverFromStaleSession('Could not verify your session. Please sign in again.');
         return;
       }
 
