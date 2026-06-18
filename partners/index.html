@@ -139,15 +139,64 @@
     .login-logo { font-size: 2rem; margin-bottom: 8px; }
     .code-row {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 10px;
-      padding: 12px 0;
+      padding: 14px 0;
       border-bottom: 1px solid var(--border);
     }
     .code-row:last-child { border-bottom: none; }
     .code-meta { flex: 1; min-width: 0; }
     .code-value { font-weight: 800; font-size: 1.05rem; letter-spacing: 0.04em; }
-    .code-link { font-size: 0.78rem; color: var(--text-secondary); word-break: break-all; }
+    .code-link { font-size: 0.78rem; color: var(--text-secondary); word-break: break-all; margin-bottom: 10px; }
+    .funnel-strip {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .funnel-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 7px 12px;
+      min-width: 64px;
+      text-align: center;
+    }
+    .funnel-cell .fc-num {
+      font-size: 1.15rem;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+    .funnel-cell .fc-label {
+      font-size: 0.62rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 1px;
+    }
+    .funnel-cell.fc-clicks .fc-num { color: #4db8ff; }
+    .funnel-cell.fc-installs .fc-num { color: var(--warn); }
+    .funnel-cell.fc-conv .fc-num { color: var(--accent); }
+    .funnel-arrow {
+      align-self: center;
+      color: var(--text-secondary);
+      font-size: 0.7rem;
+      padding: 0 2px;
+      opacity: 0.5;
+    }
+    .conv-rate-badge {
+      align-self: center;
+      background: rgba(88,204,2,0.12);
+      color: var(--accent);
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 4px 10px;
+      margin-left: 4px;
+    }
     .commission-row {
       padding: 12px 0;
       border-bottom: 1px solid var(--border);
@@ -830,16 +879,44 @@
       } else {
         codesList.innerHTML = codes.map((c) => {
           const shareUrl = c.app_store_url;
+          const clicks   = Number(c.clicks_30d  ?? c.clicks_total ?? 0);
+          const installs = Number(c.installs     ?? 0);
+          const convs    = Number(c.conversions  ?? 0);
+          // Click→install rate (capped at 100 %)
+          const installRate = clicks > 0 ? Math.min(100, Math.round(installs / clicks * 100)) : null;
+          // Install→purchase rate
+          const convRate    = installs > 0 ? Math.min(100, Math.round(convs / installs * 100)) : null;
+
+          const funnelHtml = `
+            <div class="funnel-strip">
+              <div class="funnel-cell fc-clicks">
+                <span class="fc-num">${clicks.toLocaleString()}</span>
+                <span class="fc-label">Clicks<br><span style="opacity:0.6;font-size:0.58rem">30 days</span></span>
+              </div>
+              <span class="funnel-arrow">▶</span>
+              <div class="funnel-cell fc-installs">
+                <span class="fc-num">${installs.toLocaleString()}</span>
+                <span class="fc-label">Installs</span>
+              </div>
+              <span class="funnel-arrow">▶</span>
+              <div class="funnel-cell fc-conv">
+                <span class="fc-num">${convs.toLocaleString()}</span>
+                <span class="fc-label">Purchases</span>
+              </div>
+              ${convRate !== null ? `<span class="conv-rate-badge">${convRate}% conv</span>` : ''}
+            </div>
+          `;
+
           return `
             <div class="code-row">
               <div class="code-meta">
                 <div class="code-value">${escapeHtml(c.code)}</div>
                 <div class="code-link" title="${escapeHtml(shareUrl)}">
-                  🔗 App Store link<br>
-                  <span style="font-size:0.73rem;opacity:0.7;">${escapeHtml(shareUrl)}</span>
+                  🔗 Smart link · tap to copy
                 </div>
+                ${funnelHtml}
               </div>
-              <button type="button" class="btn btn-sm btn-secondary" data-copy="${escapeHtml(shareUrl)}">Copy link</button>
+              <button type="button" class="btn btn-sm btn-secondary" data-copy="${escapeHtml(shareUrl)}" style="flex-shrink:0;margin-top:2px;">Copy</button>
             </div>
           `;
         }).join('');
