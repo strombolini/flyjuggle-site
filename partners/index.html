@@ -550,7 +550,26 @@
           return;
         }
         if (!bootDone) return;
+
+        // TOKEN_REFRESHED fires periodically when Supabase refreshes the JWT.
+        // Do NOT re-enter the app or re-validate — the session is already good
+        // and the dashboard is already loaded. Triggering enterApp() here would
+        // hit getUser() → transient failures during refresh = logged out.
+        if (event === 'TOKEN_REFRESHED') {
+          // Session is already updated in supabase-js; nothing to do.
+          return;
+        }
+
+        // USER_UPDATED fires when profile metadata changes; keep the app open.
+        if (event === 'USER_UPDATED' && session?.user) {
+          if (!isEmailVerified(session.user)) showVerify(session.user.email);
+          // Otherwise stay in the app — no need to re-validate.
+          return;
+        }
+
         if (event === 'SIGNED_OUT' || !session) { showLogin(); return; }
+
+        // SIGNED_IN: explicit login — enter the app with full validation.
         if (session?.user && !isEmailVerified(session.user)) showVerify(session.user.email);
         else if (session) await enterApp();
       });
@@ -940,16 +959,33 @@
       // Validate the session SERVER-SIDE before trusting it. A locally-cached
       // token can outlive the actual user (e.g. account deleted/reset). getUser
       // hits the auth server and fails fast for a stale token → clean login.
-      try {
-        const { data: { user }, error } = await withTimeout(
-          supabase.auth.getUser(), 6000, 'get_user',
-        );
-        if (error || !user) {
-          recoverFromStaleSession('Your session is no longer valid. Please sign in again.');
-          return;
+      // Use retry logic so a single network blip doesn't log the user out.
+      let serverUser = null;
+      let lastError = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const { data: { user }, error } = await withTimeout(
+            supabase.auth.getUser(), 8000, 'get_user',
+          );
+          if (!error && user) {
+            serverUser = user;
+            break;
+          }
+          lastError = error;
+        } catch (e) {
+          lastError = e;
         }
-      } catch (_) {
-        recoverFromStaleSession('Could not verify your session. Please sign in again.');
+        // Brief pause before retry (unless last attempt).
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 800));
+      }
+      if (!serverUser) {
+        // All retries failed — session is genuinely stale or account is gone.
+        const errMsg = lastError?.message || '';
+        if (/jwt|token|expired|invalid/i.test(errMsg)) {
+          recoverFromStaleSession('Your session expired. Please sign in again.');
+        } else {
+          recoverFromStaleSession('Could not verify your session. Please sign in again.');
+        }
         return;
       }
 
