@@ -421,7 +421,7 @@
 
     <div class="card" id="payoutCard">
       <h2>Payouts</h2>
-      <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $20. Commissions unlock 14 days after purchase (refund protection).</p>
+      <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $5. Commissions unlock 14 days after purchase (refund protection).</p>
       <div id="payoutActions"></div>
       <p id="payoutMessage" class="hidden"></p>
     </div>
@@ -455,6 +455,7 @@
     const SUPABASE_URL = 'https://clpkwzxejdgvifiakdra.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscGt3enhlamRndmlmaWFrZHJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzE1NTQsImV4cCI6MjA5NDk0NzU1NH0.ZBk2y5kI3b7FTHTUc-uNXg1bALEDjYKQRscR-11pylc';
     const FUNCTIONS_BASE = SUPABASE_URL + '/functions/v1';
+    const MIN_PAYOUT_USD = 5;
 
     let supabase;
     let dashboard = null;
@@ -864,7 +865,7 @@
         $('completeStripeBtn').addEventListener('click', openStripeOnboarding);
         $('stripeDashBtn').addEventListener('click', openStripeOnboarding);
       } else {
-        const disabled = available < 20;
+        const disabled = available < MIN_PAYOUT_USD;
         payoutActions.innerHTML =
           '<button type="button" class="btn btn-block" id="withdrawBtn"' + (disabled ? ' disabled' : '') + '>Withdraw ' + money(available) + '</button>' +
           '<button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" id="stripeDashBtn2">View Stripe Dashboard</button>';
@@ -1149,7 +1150,7 @@
         const { res, body } = await callFunction('/affiliate-payout');
         if (!res.ok) {
           if (body.error === 'below_minimum') {
-            throw new Error('Minimum withdrawal is $' + (body.minimum_usd || 20) + '. Available: ' + money(body.available_usd));
+            throw new Error('Minimum withdrawal is $' + (body.minimum_usd || MIN_PAYOUT_USD) + '. Available: ' + money(body.available_usd));
           }
           throw new Error(body.error || body.message || 'payout_failed');
         }
