@@ -418,6 +418,34 @@
 
     const $ = (id) => document.getElementById(id);
 
+    // In-memory auth lock. Replaces supabase-js's default navigator.locks-based
+    // lock, which can DEADLOCK across page reloads / multiple tabs if a previous
+    // holder never releases (e.g. a stale or deleted session). Serializing auth
+    // operations in-process guarantees token refresh can never hang the UI.
+    function memoryLock() {
+      let chain = Promise.resolve();
+      return (_name, _acquireTimeout, fn) => {
+        const run = chain.then(() => fn());
+        chain = run.then(() => {}, () => {});
+        return run;
+      };
+    }
+
+    // Hard timeout wrapper so no network/auth call can hang the UI forever.
+    function withTimeout(promise, ms, label) {
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error((label || 'request') + '_timeout')), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+    }
+
+    async function recoverFromStaleSession(message) {
+      bootDone = true;
+      try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {}
+      showLogin(message || 'Your session expired. Please sign in again.');
+    }
+
     function money(n) {
       const v = Number(n) || 0;
       return '$' + v.toFixed(2);
@@ -489,6 +517,7 @@
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
+          lock: memoryLock(),
         },
       });
       supabase.auth.onAuthStateChange(async (event, session) => {
@@ -497,19 +526,25 @@
           return;
         }
         if (!bootDone) return;
+        if (event === 'SIGNED_OUT' || !session) { showLogin(); return; }
         if (session?.user && !isEmailVerified(session.user)) showVerify(session.user.email);
         else if (session) await enterApp();
-        else showLogin(consumeAuthHashError());
       });
+      // Hard safety net: never let the loading screen hang. If INITIAL_SESSION
+      // never fires (e.g. a wedged auth lock from a stale/deleted session),
+      // force-resolve by clearing any persisted session and showing login.
       setTimeout(async () => {
         if (bootDone) return;
         try {
-          const { data: { session } } = await supabase.auth.getSession();
+          const { data: { session } } = await withTimeout(
+            supabase.auth.getSession(), 4000, 'get_session',
+          );
           finishBoot(session);
         } catch {
+          try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {}
           finishBoot(null);
         }
-      }, 2500);
+      }, 4000);
     }
 
     function showLogin(authNotice) {
@@ -564,17 +599,26 @@
       return map[code] || code || 'link_failed';
     }
 
+    // All RPCs go through here so a wedged network/auth layer can never hang the
+    // UI. 12s is far above the ~150ms real latency; hitting it means something is
+    // genuinely stuck and we surface an error instead of spinning forever.
+    async function rpcCall(name, args, timeoutMs) {
+      const { data, error } = await withTimeout(
+        supabase.rpc(name, args || {}), timeoutMs || 12000, name,
+      );
+      if (error) throw new Error(error.message);
+      return data;
+    }
+
     async function linkPartnerAccount(displayName) {
       const args = displayName ? { p_display_name: displayName } : {};
-      const { data, error } = await supabase.rpc('affiliate_link_user', args);
-      if (error) throw new Error(error.message);
+      const data = await rpcCall('affiliate_link_user', args);
       if (!data?.ok) throw new Error(mapLinkError(data?.error));
       return data;
     }
 
     async function fetchDashboard() {
-      const { data, error } = await supabase.rpc('affiliate_partner_dashboard');
-      if (error) throw new Error(error.message);
+      const data = await rpcCall('affiliate_partner_dashboard');
       if (data?.error) {
         throw new Error(mapLinkError(data.error) || data.error);
       }
@@ -582,10 +626,7 @@
     }
 
     async function fetchRevenueChart(period) {
-      const { data, error } = await supabase.rpc('affiliate_partner_revenue_chart', {
-        p_period: period,
-      });
-      if (error) throw new Error(error.message);
+      const data = await rpcCall('affiliate_partner_revenue_chart', { p_period: period });
       if (data?.error) {
         throw new Error(mapLinkError(data.error) || data.error);
       }
@@ -848,8 +889,21 @@
         .subscribe();
     }
 
+    async function getSessionSafe() {
+      const { data: { session } } = await withTimeout(
+        supabase.auth.getSession(), 6000, 'get_session',
+      );
+      return session;
+    }
+
     async function enterApp() {
-      const { data: { session } } = await supabase.auth.getSession();
+      let session;
+      try {
+        session = await getSessionSafe();
+      } catch (_) {
+        await recoverFromStaleSession('Could not verify your session. Please sign in again.');
+        return;
+      }
       if (!session?.user) {
         showLogin();
         return;
@@ -876,15 +930,23 @@
         setupRealtime(data.partner.id);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not load partner account';
+        // A timeout or auth failure here means the session is wedged/stale —
+        // bounce to a clean login instead of leaving a broken dashboard.
+        if (/_timeout$/.test(msg) || /jwt|token|not_authenticated|unauthorized/i.test(msg)) {
+          await recoverFromStaleSession('Your session expired. Please sign in again.');
+          return;
+        }
         $('loadingScreen').classList.remove('hidden');
         $('appScreen').classList.add('hidden');
-        $('loadingScreen').innerHTML = '<p class="error" style="text-align:center;padding:48px 16px;">' + escapeHtml(msg) + '</p>';
+        $('loadingScreen').innerHTML = '<p class="error" style="text-align:center;padding:48px 16px;">'
+          + escapeHtml(msg)
+          + '<br><br><button type="button" class="btn" onclick="location.reload()">Reload</button></p>';
       }
     }
 
     async function authHeaders() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not signed in');
+      const session = await getSessionSafe();
+      if (!session?.access_token) throw new Error('not_authenticated');
       return {
         Authorization: 'Bearer ' + session.access_token,
         apikey: SUPABASE_ANON_KEY,
@@ -892,20 +954,35 @@
       };
     }
 
+    async function callFunction(path, timeoutMs) {
+      const res = await withTimeout(
+        fetch(FUNCTIONS_BASE + path, {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: '{}',
+        }),
+        timeoutMs || 25000,
+        'function_call',
+      );
+      const body = await res.json().catch(() => ({}));
+      return { res, body };
+    }
+
     async function openStripeOnboarding() {
       showMessage($('payoutMessage'), '', false);
       $('connectStripeBtn')?.setAttribute('disabled', 'true');
       try {
-        const res = await fetch(FUNCTIONS_BASE + '/stripe-connect-onboard', {
-          method: 'POST',
-          headers: await authHeaders(),
-          body: '{}',
-        });
-        const body = await res.json();
+        const { res, body } = await callFunction('/stripe-connect-onboard');
         if (!res.ok) throw new Error(body.error || 'stripe_failed');
         if (body.url) window.location.href = body.url;
       } catch (e) {
-        showMessage($('payoutMessage'), e instanceof Error ? e.message : 'Stripe error', true);
+        const msg = e instanceof Error ? e.message : 'Stripe error';
+        if (msg === 'not_authenticated') {
+          await recoverFromStaleSession();
+          return;
+        }
+        showMessage($('payoutMessage'),
+          msg === 'function_call_timeout' ? 'Stripe is taking too long. Please try again.' : msg, true);
       } finally {
         $('connectStripeBtn')?.removeAttribute('disabled');
       }
@@ -916,12 +993,7 @@
       showMessage($('payoutMessage'), 'Processing…', false);
       $('withdrawBtn')?.setAttribute('disabled', 'true');
       try {
-        const res = await fetch(FUNCTIONS_BASE + '/affiliate-payout', {
-          method: 'POST',
-          headers: await authHeaders(),
-          body: '{}',
-        });
-        const body = await res.json();
+        const { res, body } = await callFunction('/affiliate-payout');
         if (!res.ok) {
           if (body.error === 'below_minimum') {
             throw new Error('Minimum withdrawal is $' + (body.minimum_usd || 20) + '. Available: ' + money(body.available_usd));
@@ -931,7 +1003,13 @@
         showMessage($('payoutMessage'), 'Withdrawal sent! ' + money(body.amount_usd) + ' is on its way.', false);
         await refreshDashboard(false);
       } catch (e) {
-        showMessage($('payoutMessage'), e instanceof Error ? e.message : 'Payout error', true);
+        const msg = e instanceof Error ? e.message : 'Payout error';
+        if (msg === 'not_authenticated') {
+          await recoverFromStaleSession();
+          return;
+        }
+        showMessage($('payoutMessage'),
+          msg === 'function_call_timeout' ? 'Payout is taking too long. Please try again.' : msg, true);
       } finally {
         $('withdrawBtn')?.removeAttribute('disabled');
       }
@@ -959,7 +1037,16 @@
         return;
       }
       $('signInBtn').disabled = true;
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      let data, error;
+      try {
+        ({ data, error } = await withTimeout(
+          supabase.auth.signInWithPassword({ email, password }), 15000, 'sign_in',
+        ));
+      } catch (e) {
+        $('signInBtn').disabled = false;
+        showMessage(msg, 'Sign-in timed out. Check your connection and try again.', true);
+        return;
+      }
       $('signInBtn').disabled = false;
       if (error) {
         showMessage(msg, mapAuthError(error.message), true);
@@ -1048,10 +1135,19 @@
       $('createCodeBtn').disabled = true;
       showMessage(msg, 'Creating code…', false);
 
-      const { data, error } = await supabase.rpc('affiliate_create_code', { p_code: code });
-      if (error) {
+      let data;
+      try {
+        data = await rpcCall('affiliate_create_code', { p_code: code });
+      } catch (e) {
         $('createCodeBtn').disabled = false;
-        showMessage(msg, error.message, true);
+        const m = e instanceof Error ? e.message : 'Could not create code';
+        if (/_timeout$/.test(m)) {
+          showMessage(msg, 'That took too long — your session may have expired. Reload the page and sign in again.', true);
+        } else if (/jwt|token|not_authenticated|unauthorized/i.test(m)) {
+          await recoverFromStaleSession();
+        } else {
+          showMessage(msg, m, true);
+        }
         return;
       }
       if (!data?.ok) {
@@ -1062,6 +1158,7 @@
           code_reserved: 'That code is reserved. Contact Fly Juggle if you are an official partner.',
           invalid_code: 'Use 4–20 letters, numbers, or underscores.',
           partner_not_active: 'Your partner account is not active yet.',
+          not_a_partner: 'Your partner account is not set up. Reload the page and sign in again.',
         };
         showMessage(msg, errMap[data.error] || data.error || 'Could not create code', true);
         return;
