@@ -197,6 +197,36 @@
       padding: 4px 10px;
       margin-left: 4px;
     }
+    .mrr-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      gap: 8px;
+    }
+    .mrr-stat { flex: 1; text-align: center; }
+    .mrr-divider {
+      width: 1px;
+      height: 44px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .mrr-badge {
+      display: inline-block;
+      background: rgba(158,79,222,0.14);
+      color: var(--purple);
+      border-radius: 999px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      padding: 3px 9px;
+      text-transform: uppercase;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+    @media (max-width: 400px) {
+      .mrr-row { flex-direction: column; gap: 10px; }
+      .mrr-divider { width: 44px; height: 1px; }
+    }
     .commission-row {
       padding: 12px 0;
       border-bottom: 1px solid var(--border);
@@ -397,6 +427,27 @@
         <div class="stat-num purple" id="lifetimeBalance">$0.00</div>
         <div class="stat-label">Lifetime</div>
       </div>
+    </div>
+
+    <div class="card" id="mrrCard">
+      <h2>Monthly recurring <span class="mrr-badge">MRR</span></h2>
+      <div class="mrr-row">
+        <div class="mrr-stat">
+          <div class="stat-num yes" id="mrrCommission">$0.00</div>
+          <div class="stat-label">Your commission / mo</div>
+        </div>
+        <div class="mrr-divider"></div>
+        <div class="mrr-stat">
+          <div class="stat-num" id="mrrActiveSubs" style="color:#4db8ff;">0</div>
+          <div class="stat-label">Active subscribers</div>
+        </div>
+        <div class="mrr-divider"></div>
+        <div class="mrr-stat">
+          <div class="stat-num purple" id="mrrAttributed">$0.00</div>
+          <div class="stat-label">Attributed MRR</div>
+        </div>
+      </div>
+      <p class="hint" style="margin:12px 0 0;">Estimated monthly value of active subscribers you've referred. Yearly plans ÷ 12.</p>
     </div>
 
     <div class="card" id="revenueChartCard">
@@ -851,6 +902,11 @@
       $('availableBalance').textContent = money(b.available_balance);
       $('pendingBalance').textContent = money(b.pending_balance);
       $('lifetimeBalance').textContent = money(b.lifetime_earnings);
+
+      const mrr = data.mrr || {};
+      $('mrrCommission').textContent = money(mrr.mrr_usd ?? 0);
+      $('mrrActiveSubs').textContent  = String(mrr.active_subs ?? 0);
+      $('mrrAttributed').textContent  = money(mrr.attributed_mrr_usd ?? 0);
 
       const available = Number(b.available_balance) || 0;
       const payoutActions = $('payoutActions');
