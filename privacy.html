@@ -15,13 +15,13 @@
 </head>
 <body>
 <h1>Fly Juggle Privacy Policy</h1>
-<p class="date">Effective Date: May 2, 2026</p>
+<p class="date">Effective Date: July 7, 2026</p>
 
 <h2>1. Overview</h2>
 <p>Fly Juggle ("the App", "we", "our") is committed to your privacy. This policy describes what data the App collects, how it is used, and your choices.</p>
 
 <h2>2. Videos and Media</h2>
-<p><strong>Imported or recorded clips:</strong> When you import a video from Photos or record a clip using the camera, the App accesses that media only to analyze your juggling or to save a replay you explicitly request. <strong>AI Coach</strong> reads your clip on-device using Apple's Core ML and Google MediaPipe; tracking, scoring, overlays, and replays are computed locally. <strong>Video files and video frames are not uploaded</strong> for AI Coach analysis.</p>
+<p><strong>Imported or recorded clips:</strong> When you import a video from Photos or record a clip using the camera, the App accesses that media only to analyze your juggling or to save a replay you explicitly request. <strong>AI Coach</strong> reads your clip on-device using Google MediaPipe and on-device machine-learning frameworks; tracking, scoring, overlays, and replays are computed locally. <strong>Your video files and frames are never uploaded for AI Coach analysis.</strong> The only exception is if you choose to <strong>share a trick</strong>: tapping Share generates a short animated GIF of that replay and uploads it to our storage provider (Supabase) to create a public shareable link. No media leaves your device unless you explicitly tap Share.</p>
 <p><strong>AI text features:</strong> Some features (trick recommendations, coaching advice) may send short <strong>structured summaries</strong> — for example trick name, numerical scores, timing metrics, and other juggling statistics derived from on-device analysis — through Fly Juggle server infrastructure to AI service providers. These payloads do <strong>not</strong> include raw video or pixel data.</p>
 <p><strong>Replay export:</strong> If you tap Save, generated replay videos are written to your Photo Library at your request.</p>
 
@@ -30,12 +30,12 @@
 <ul>
   <li>App events: which screens you visit, which features you use (e.g. "trick viewed", "AI coach started")</li>
   <li>Performance and crash data to help us diagnose issues</li>
-  <li>A randomly generated anonymous device identifier used to distinguish sessions</li>
+  <li>A persistent per-installation device identifier used to distinguish your sessions. The same identifier is also used by RevenueCat and Supabase (see Section 6) to associate your subscription and app activity with your installation; it is not your name, email, or a cross-app advertising ID</li>
 </ul>
 <p>PostHog analytics data is <strong>not</strong> used for advertising, is <strong>not</strong> linked to your real identity, and is <strong>not</strong> sold or shared with third parties for any purpose other than operating and improving the App. PostHog's privacy policy is available at <a href="https://posthog.com/privacy">posthog.com/privacy</a>.</p>
 
 <h2>4. Subscription and Purchase Data</h2>
-<p>If you subscribe to Fly Juggle Premium, the purchase transaction is processed entirely by Apple's App Store. We receive a transaction receipt from Apple that we use to confirm your subscription status. We do not receive or store your payment card information.</p>
+<p>If you subscribe to Fly Juggle Premium, the purchase transaction is processed entirely by the store you purchased through — <strong>Apple's App Store</strong> (iOS) or <strong>Google Play</strong> (Android). We use <strong>RevenueCat</strong> to validate and manage your subscription status from the store receipt. We receive a transaction receipt (tied to a device identifier) that we use to confirm your subscription status. We do not receive or store your payment card information. RevenueCat's privacy policy is available at <a href="https://www.revenuecat.com/privacy">revenuecat.com/privacy</a>.</p>
 
 <h2>5. Analysis Data</h2>
 <p>Analysis results such as scores, throw observations, catch locations, timing metrics, and progression history are stored locally on your device so your past sessions appear inside the App. Optional coaching-text features may send only the structured summaries described in Section 2; they do not include your video.</p>
@@ -43,7 +43,9 @@
 <h2>6. Third-Party Sharing</h2>
 <p>We share data only with service providers necessary to operate the App:</p>
 <ul>
-  <li><strong>PostHog</strong> — analytics (US-based; anonymous usage data)</li>
+  <li><strong>PostHog</strong> — product analytics and crash diagnostics (US-based; app usage tied to a device identifier)</li>
+  <li><strong>RevenueCat</strong> — subscription purchase validation and management (store receipt and a device identifier)</li>
+  <li><strong>Supabase</strong> — backend for features you use, such as referrals, gift codes, coaching-call scheduling, and shareable trick links; stores a device identifier and, only if you share a trick, the generated GIF of that clip</li>
   <li><strong>OpenAI / AI providers</strong> — short structured prompts for AI coaching text (no raw video)</li>
   <li><strong>Fly Juggle server infrastructure</strong> — routing structured coaching prompts to AI providers</li>
 </ul>
@@ -61,7 +63,7 @@
 <p>The App does not record microphone audio: there is no microphone permission prompt and no audio capture path in the shipping build.</p>
 
 <h2>9. Your Choices and Data Deletion</h2>
-<p>You can revoke camera and Photos permissions at any time in iOS Settings → Fly Juggle. You can reset all local profile and progression data from the App's Profile settings screen. To request deletion of or ask questions about server-processed data (for example coaching-text requests), email <a href="mailto:tima.babenko@gmail.com">tima.babenko@gmail.com</a> (developer) or reach us on <a href="https://discord.gg/RCjSQ65WCn">Discord</a>.</p>
+<p>You can revoke camera and media permissions at any time in your device settings (iOS: Settings → Fly Juggle; Android: Settings → Apps → Fly Juggle → Permissions). You can manage or cancel a subscription in the App Store (iOS) or Google Play → Subscriptions (Android). You can reset all local profile and progression data from the App's Profile settings screen. To request deletion of or ask questions about server-processed data (for example coaching-text requests, referral, or shared-trick data), email <a href="mailto:tima.babenko@gmail.com">tima.babenko@gmail.com</a> (developer) or reach us on <a href="https://discord.gg/RCjSQ65WCn">Discord</a>.</p>
 
 <h2>10. Children</h2>
 <p>The App is not directed at children under 13 and is not in the Kids Category. We do not knowingly collect personal information from children under 13.</p>
