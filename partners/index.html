@@ -571,6 +571,56 @@
       } catch (_) {}
     }
 
+    // Non-destructive recovery: keep the session in storage and offer a reload.
+    // A reload re-enters via INITIAL_SESSION with the still-valid token, so the
+    // partner is NOT forced to sign in again over a transient hiccup.
+    function showReload(message) {
+      bootDone = true;
+      $('loginScreen').classList.add('hidden');
+      $('verifyScreen').classList.add('hidden');
+      $('appScreen').classList.add('hidden');
+      $('loadingScreen').classList.remove('hidden');
+      $('loadingScreen').innerHTML = '<p class="error" style="text-align:center;padding:48px 16px;">'
+        + escapeHtml(message || 'Connection hiccup. Reload to continue — you are still signed in.')
+        + '<br><br><button type="button" class="btn" onclick="location.reload()">Reload</button></p>';
+    }
+
+    // Silently try to refresh the access token from the stored refresh token.
+    // Returns true only if we end up holding a valid session again.
+    async function attemptSessionRepair() {
+      try {
+        const { data, error } = await withTimeout(
+          supabase.auth.refreshSession(), 8000, 'refresh',
+        );
+        if (!error && data?.session?.access_token) return true;
+      } catch (_) { /* fall through */ }
+      return false;
+    }
+
+    // Central resilient recovery. Only WIPE the session (force re-login) when it
+    // is genuinely unrecoverable. Transient timeouts/network, or an auth error a
+    // refresh fixes, keep the session — the #1 cause of "it logs me out after a
+    // couple minutes" is treating a slow/cold request as a dead session.
+    async function handleSessionError(rawMessage) {
+      const msg = String(rawMessage || '');
+      const isTimeout = /_timeout$/.test(msg);
+      const isNetwork = /network|failed to fetch|load failed|fetch/i.test(msg);
+      const isAuth = /jwt|token|expired|invalid|not_authenticated|unauthorized/i.test(msg);
+
+      // Transient with no auth signal → never log out.
+      if ((isTimeout || isNetwork) && !isAuth) {
+        showReload('Connection hiccup — reload to continue. You are still signed in.');
+        return;
+      }
+      // Auth-ish error → a rotated/slightly-stale token is common and recoverable.
+      if (await attemptSessionRepair()) {
+        showReload('Session refreshed — reload to continue.');
+        return;
+      }
+      // Refresh failed → the session really is dead (e.g. account reset).
+      recoverFromStaleSession('Your session expired. Please sign in again.');
+    }
+
     function money(n) {
       const v = Number(n) || 0;
       return '$' + v.toFixed(2);
@@ -1077,8 +1127,10 @@
       let session;
       try {
         session = await getSessionSafe();
-      } catch (_) {
-        recoverFromStaleSession('Could not verify your session. Please sign in again.');
+      } catch (e) {
+        // getSession is local, but the memoryLock can serialize it behind an
+        // in-flight token refresh; a timeout here is transient, not a dead session.
+        await handleSessionError(e instanceof Error ? e.message : 'get_session_timeout');
         return;
       }
       if (!session?.user) {
@@ -1113,13 +1165,11 @@
         if (attempt < 2) await new Promise((r) => setTimeout(r, 800));
       }
       if (!serverUser) {
-        // All retries failed — session is genuinely stale or account is gone.
-        const errMsg = lastError?.message || '';
-        if (/jwt|token|expired|invalid/i.test(errMsg)) {
-          recoverFromStaleSession('Your session expired. Please sign in again.');
-        } else {
-          recoverFromStaleSession('Could not verify your session. Please sign in again.');
-        }
+        // All 3 retries failed. This does NOT prove the session is dead — it's
+        // just as likely offline / a cold auth server. Route through the resilient
+        // handler: transient → keep session + reload; genuine auth failure that a
+        // refresh can't fix → clean login.
+        await handleSessionError(lastError?.message || 'get_user_timeout');
         return;
       }
 
@@ -1140,17 +1190,14 @@
         setupRealtime(data.partner.id);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not load partner account';
-        // A timeout or auth failure here means the session is wedged/stale —
-        // bounce to a clean login instead of leaving a broken dashboard.
-        if (/_timeout$/.test(msg) || /jwt|token|not_authenticated|unauthorized/i.test(msg)) {
-          await recoverFromStaleSession('Your session expired. Please sign in again.');
+        // A timeout/network/auth error here is usually transient (cold edge
+        // function, slow query, flaky link). Never destroy the session over it —
+        // handleSessionError keeps it and offers reload unless it's truly dead.
+        if (/_timeout$/.test(msg) || /jwt|token|not_authenticated|unauthorized|network|failed to fetch|load failed/i.test(msg)) {
+          await handleSessionError(msg);
           return;
         }
-        $('loadingScreen').classList.remove('hidden');
-        $('appScreen').classList.add('hidden');
-        $('loadingScreen').innerHTML = '<p class="error" style="text-align:center;padding:48px 16px;">'
-          + escapeHtml(msg)
-          + '<br><br><button type="button" class="btn" onclick="location.reload()">Reload</button></p>';
+        showReload(msg);
       }
     }
 
@@ -1188,7 +1235,12 @@
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Stripe error';
         if (msg === 'not_authenticated') {
-          await recoverFromStaleSession();
+          // Try a silent refresh before dumping them to login.
+          if (await attemptSessionRepair()) {
+            showMessage($('payoutMessage'), 'Session refreshed — tap the button again.', false);
+          } else {
+            await recoverFromStaleSession();
+          }
           return;
         }
         showMessage($('payoutMessage'),
@@ -1215,7 +1267,11 @@
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Payout error';
         if (msg === 'not_authenticated') {
-          await recoverFromStaleSession();
+          if (await attemptSessionRepair()) {
+            showMessage($('payoutMessage'), 'Session refreshed — tap Withdraw again.', false);
+          } else {
+            await recoverFromStaleSession();
+          }
           return;
         }
         showMessage($('payoutMessage'),
@@ -1357,9 +1413,14 @@
         $('createCodeBtn').disabled = false;
         const m = e instanceof Error ? e.message : 'Could not create code';
         if (/_timeout$/.test(m)) {
-          showMessage(msg, 'That took too long — your session may have expired. Reload the page and sign in again.', true);
+          // A slow create is NOT a dead session — keep them signed in.
+          showMessage(msg, 'That took too long. Check your connection and try again.', true);
         } else if (/jwt|token|not_authenticated|unauthorized/i.test(m)) {
-          await recoverFromStaleSession();
+          if (await attemptSessionRepair()) {
+            showMessage(msg, 'Session refreshed — tap Create again.', false);
+          } else {
+            await recoverFromStaleSession();
+          }
         } else {
           showMessage(msg, m, true);
         }
