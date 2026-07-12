@@ -179,6 +179,7 @@
     }
     .funnel-cell.fc-clicks .fc-num { color: #4db8ff; }
     .funnel-cell.fc-installs .fc-num { color: var(--warn); }
+    .funnel-cell.fc-trials .fc-num { color: var(--purple); }
     .funnel-cell.fc-conv .fc-num { color: var(--accent); }
     .funnel-arrow {
       align-self: center;
@@ -1106,6 +1107,7 @@
           const shareUrl = c.app_store_url;
           const clicks   = Number(c.clicks_30d  ?? c.clicks_total ?? 0);
           const installs = Number(c.installs     ?? 0);
+          const trials   = Number(c.trials       ?? 0);
           const convs    = Number(c.conversions  ?? 0);
           // Click→install rate (capped at 100 %)
           const installRate = clicks > 0 ? Math.min(100, Math.round(installs / clicks * 100)) : null;
@@ -1122,6 +1124,11 @@
               <div class="funnel-cell fc-installs">
                 <span class="fc-num">${installs.toLocaleString()}</span>
                 <span class="fc-label">Installs</span>
+              </div>
+              <span class="funnel-arrow">▶</span>
+              <div class="funnel-cell fc-trials">
+                <span class="fc-num">${trials.toLocaleString()}</span>
+                <span class="fc-label">Trials</span>
               </div>
               <span class="funnel-arrow">▶</span>
               <div class="funnel-cell fc-conv">
