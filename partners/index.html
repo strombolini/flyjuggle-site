@@ -357,8 +357,7 @@
 <body>
   <div id="loginScreen" class="wrap hidden">
     <div class="card">
-      <div class="login-logo">🤹</div>
-      <h1>Partner Portal</h1>
+      <h1>Fly Juggle Affiliate Portal</h1>
       <div class="auth-tabs">
         <button type="button" class="auth-tab active" id="tabSignIn" data-tab="signin">Sign in</button>
         <button type="button" class="auth-tab" id="tabSignUp" data-tab="signup">Sign up</button>
@@ -376,8 +375,6 @@
       </div>
 
       <div id="panelSignUp" class="auth-panel hidden">
-        <label for="signUpName">Display name</label>
-        <input id="signUpName" type="text" autocomplete="name" maxlength="80" placeholder="Your name or brand">
         <label for="signUpEmail">Email</label>
         <input id="signUpEmail" type="email" autocomplete="email" placeholder="you@example.com">
         <label for="signUpPassword">Password</label>
@@ -1458,15 +1455,10 @@
     });
 
     $('signUpBtn').addEventListener('click', async () => {
-      const name = $('signUpName').value.trim();
       const email = $('signUpEmail').value.trim().toLowerCase();
       const password = $('signUpPassword').value;
       const msg = $('loginMessage');
       showMessage(msg, '', false);
-      if (!name || name.length < 2) {
-        showMessage(msg, 'Enter your display name (at least 2 characters).', true);
-        return;
-      }
       if (!email) {
         showMessage(msg, 'Enter your email.', true);
         return;
@@ -1488,7 +1480,6 @@
         password,
         options: {
           emailRedirectTo: redirectTo,
-          data: { display_name: name },
         },
       });
       $('signUpBtn').disabled = false;
