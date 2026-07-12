@@ -524,15 +524,69 @@
 
     const $ = (id) => document.getElementById(id);
 
+    // ---------------------------------------------------------------------
+    // Diagnostics: every auth event, lifecycle transition, network call and
+    // recovery decision is logged with a timestamp — to the console AND to a
+    // localStorage ring buffer that survives reloads. Read it any time with
+    // `window.__fjlog()` in DevTools (or copy(window.__fjlog().join('\n'))).
+    // Added while root-causing the "Connection hiccup" dashboard teardown so
+    // any future session issue is diagnosable from a partner's browser.
+    // ---------------------------------------------------------------------
+    const LOG_KEY = 'fj_portal_log_v1';
+    const LOG_MAX = 500;
+    function plog() {
+      const parts = [];
+      for (let i = 0; i < arguments.length; i++) {
+        const a = arguments[i];
+        if (a instanceof Error) parts.push(a.message);
+        else if (typeof a === 'object' && a !== null) {
+          try { parts.push(JSON.stringify(a)); } catch (_) { parts.push(String(a)); }
+        } else parts.push(String(a));
+      }
+      const line = new Date().toISOString() + ' ' + parts.join(' ');
+      try { console.log('[FJPortal]', line); } catch (_) {}
+      try {
+        const buf = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
+        buf.push(line);
+        while (buf.length > LOG_MAX) buf.shift();
+        localStorage.setItem(LOG_KEY, JSON.stringify(buf));
+      } catch (_) {}
+    }
+    window.__fjlog = function () {
+      try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (_) { return []; }
+    };
+    window.addEventListener('online', () => plog('net: online'));
+    window.addEventListener('offline', () => plog('net: offline'));
+    document.addEventListener('visibilitychange', () => plog('visibility:', document.visibilityState));
+    window.addEventListener('pageshow', (e) => plog('pageshow persisted=' + Boolean(e.persisted)));
+    window.addEventListener('error', (e) => plog('window.error:', e.message || String(e)));
+    window.addEventListener('unhandledrejection', (e) => {
+      plog('unhandledrejection:', (e && e.reason && (e.reason.message || String(e.reason))) || 'unknown');
+    });
+    plog('boot: page load', location.pathname + location.search);
+
+    // The user id currently RENDERED in the app screen. Used to make noisy
+    // auth events (supabase-js re-emits SIGNED_IN on every tab focus)
+    // idempotent: if the dashboard is already up for this user, there is
+    // nothing to re-enter. Cleared when we return to the login screen.
+    let activeUserId = null;
+    function appVisible() {
+      const el = $('appScreen');
+      return Boolean(el && !el.classList.contains('hidden'));
+    }
+
     // In-memory auth lock. Replaces supabase-js's default navigator.locks-based
     // lock, which can DEADLOCK across page reloads / multiple tabs if a previous
     // holder never releases (e.g. a stale or deleted session). Serializing auth
     // operations in-process guarantees token refresh can never hang the UI.
     function memoryLock() {
       let chain = Promise.resolve();
+      let depth = 0;
       return (_name, _acquireTimeout, fn) => {
+        depth += 1;
+        if (depth > 1) plog('authlock: queued depth=' + depth, _name || '');
         const run = chain.then(() => fn());
-        chain = run.then(() => {}, () => {});
+        chain = run.then(() => { depth -= 1; }, () => { depth -= 1; });
         return run;
       };
     }
@@ -563,6 +617,7 @@
     // storage, and fire signOut in the background (never awaited — signOut can
     // itself block on a wedged auth lock).
     function recoverFromStaleSession(message) {
+      plog('recoverFromStaleSession:', message || '(default)', 'appVisible=' + appVisible());
       bootDone = true;
       showLogin(message || 'Your session expired. Please sign in again.');
       clearAuthStorage();
@@ -574,7 +629,19 @@
     // Non-destructive recovery: keep the session in storage and offer a reload.
     // A reload re-enters via INITIAL_SESSION with the still-valid token, so the
     // partner is NOT forced to sign in again over a transient hiccup.
+    //
+    // BOOT-ONLY BY DESIGN: if the dashboard is already rendered, we NEVER
+    // replace it with this screen — a background/transient failure while the
+    // app is on screen must keep the app on screen. (Root cause of the
+    // recurring "Connection hiccup" reports: supabase-js re-emits SIGNED_IN on
+    // every tab focus; the handler re-ran the full boot gauntlet and any
+    // transient failure tore the live dashboard down to this screen.)
     function showReload(message) {
+      if (appVisible()) {
+        plog('showReload SUPPRESSED (dashboard already active):', message || '');
+        return;
+      }
+      plog('showReload:', message || '(default)');
       bootDone = true;
       $('loginScreen').classList.add('hidden');
       $('verifyScreen').classList.add('hidden');
@@ -588,12 +655,16 @@
     // Silently try to refresh the access token from the stored refresh token.
     // Returns true only if we end up holding a valid session again.
     async function attemptSessionRepair() {
+      const t0 = Date.now();
       try {
         const { data, error } = await withTimeout(
           supabase.auth.refreshSession(), 8000, 'refresh',
         );
+        plog('attemptSessionRepair:', error ? ('error ' + error.message) : 'ok', (Date.now() - t0) + 'ms');
         if (!error && data?.session?.access_token) return true;
-      } catch (_) { /* fall through */ }
+      } catch (e) {
+        plog('attemptSessionRepair threw:', e, (Date.now() - t0) + 'ms');
+      }
       return false;
     }
 
@@ -606,6 +677,17 @@
       const isTimeout = /_timeout$/.test(msg);
       const isNetwork = /network|failed to fetch|load failed|fetch/i.test(msg);
       const isAuth = /jwt|token|expired|invalid|not_authenticated|unauthorized/i.test(msg);
+      plog('handleSessionError:', msg,
+        'timeout=' + isTimeout, 'network=' + isNetwork, 'auth=' + isAuth,
+        'appVisible=' + appVisible());
+
+      // Dashboard already on screen → NEVER tear it down over a background
+      // error. The session lives in storage, autoRefreshToken keeps working,
+      // and the next user action simply retries.
+      if (appVisible()) {
+        plog('handleSessionError: dashboard kept, error suppressed');
+        return;
+      }
 
       // Transient with no auth signal → never log out.
       if ((isTimeout || isNetwork) && !isAuth) {
@@ -696,6 +778,12 @@
         },
       });
       supabase.auth.onAuthStateChange(async (event, session) => {
+        plog('auth event:', event,
+          'user=' + (session?.user?.id || 'none'),
+          'expires_at=' + (session?.expires_at || '-'),
+          'bootDone=' + bootDone,
+          'appVisible=' + appVisible(),
+          'activeUserId=' + (activeUserId || 'none'));
         if (event === 'INITIAL_SESSION') {
           finishBoot(session);
           return;
@@ -720,21 +808,34 @@
 
         if (event === 'SIGNED_OUT' || !session) { showLogin(); return; }
 
-        // SIGNED_IN: explicit login — enter the app with full validation.
-        if (session?.user && !isEmailVerified(session.user)) showVerify(session.user.email);
-        else if (session) await enterApp();
+        // SIGNED_IN — but NOT necessarily a login: supabase-js re-emits
+        // SIGNED_IN every time the tab regains focus while a session exists.
+        // Re-running the boot gauntlet (getSession → getUser ×3 → RPCs) on
+        // every tab switch tore the dashboard down and, on any transient
+        // failure, replaced it with the "Connection hiccup" screen. THE fix:
+        // if the dashboard is already rendered for this same user, the event
+        // is a no-op, exactly like TOKEN_REFRESHED.
+        if (session?.user && !isEmailVerified(session.user)) { showVerify(session.user.email); return; }
+        if (session?.user && appVisible() && activeUserId === session.user.id) {
+          plog('auth SIGNED_IN ignored — dashboard already active for this user (tab-focus re-emit)');
+          return;
+        }
+        if (session) await enterApp();
       });
       // Hard safety net: never let the loading screen hang. If INITIAL_SESSION
       // never fires (e.g. a wedged auth lock from a stale/deleted session),
       // force-resolve by clearing any persisted session and showing login.
       setTimeout(async () => {
         if (bootDone) return;
+        plog('boot fallback: INITIAL_SESSION never fired within 4s');
         try {
           const { data: { session } } = await withTimeout(
             supabase.auth.getSession(), 4000, 'get_session',
           );
+          plog('boot fallback: getSession →', session ? 'session' : 'null');
           finishBoot(session);
-        } catch {
+        } catch (e) {
+          plog('boot fallback: getSession FAILED → local signout + login', e);
           try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {}
           finishBoot(null);
         }
@@ -742,6 +843,8 @@
     }
 
     function showLogin(authNotice) {
+      plog('showLogin:', authNotice || '(no notice)');
+      activeUserId = null;
       $('loadingScreen').classList.add('hidden');
       $('appScreen').classList.add('hidden');
       $('verifyScreen').classList.add('hidden');
@@ -797,11 +900,18 @@
     // UI. 12s is far above the ~150ms real latency; hitting it means something is
     // genuinely stuck and we surface an error instead of spinning forever.
     async function rpcCall(name, args, timeoutMs) {
-      const { data, error } = await withTimeout(
-        supabase.rpc(name, args || {}), timeoutMs || 12000, name,
-      );
-      if (error) throw new Error(error.message);
-      return data;
+      const t0 = Date.now();
+      try {
+        const { data, error } = await withTimeout(
+          supabase.rpc(name, args || {}), timeoutMs || 12000, name,
+        );
+        if (error) throw new Error(error.message);
+        plog('rpc', name + ':', 'ok', (Date.now() - t0) + 'ms');
+        return data;
+      } catch (e) {
+        plog('rpc', name + ':', 'FAILED', e, (Date.now() - t0) + 'ms');
+        throw e;
+      }
     }
 
     async function linkPartnerAccount(displayName) {
@@ -1111,19 +1221,29 @@
             table: 'affiliate_commissions',
             filter: 'partner_id=eq.' + partnerId,
           },
-          () => refreshDashboard(true),
+          () => { plog('realtime: commission INSERT received'); refreshDashboard(true); },
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          plog('realtime status:', status, err ? ('err=' + (err.message || err)) : '');
+        });
     }
 
     async function getSessionSafe() {
-      const { data: { session } } = await withTimeout(
-        supabase.auth.getSession(), 6000, 'get_session',
-      );
-      return session;
+      const t0 = Date.now();
+      try {
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(), 6000, 'get_session',
+        );
+        plog('getSession:', session ? 'ok' : 'null', (Date.now() - t0) + 'ms');
+        return session;
+      } catch (e) {
+        plog('getSession FAILED:', e, (Date.now() - t0) + 'ms');
+        throw e;
+      }
     }
 
     async function enterApp() {
+      plog('enterApp: begin');
       let session;
       try {
         session = await getSessionSafe();
@@ -1188,8 +1308,11 @@
         setupChartPeriodTabs();
         await loadRevenueChart(chartPeriod);
         setupRealtime(data.partner.id);
+        activeUserId = session.user.id;
+        plog('enterApp: SUCCESS — dashboard rendered for', session.user.id);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Could not load partner account';
+        plog('enterApp: dashboard load FAILED:', msg);
         // A timeout/network/auth error here is usually transient (cold edge
         // function, slow query, flaky link). Never destroy the session over it —
         // handleSessionError keeps it and offers reload unless it's truly dead.
