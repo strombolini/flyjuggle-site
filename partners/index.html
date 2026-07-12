@@ -227,6 +227,16 @@
       .mrr-row { flex-direction: column; gap: 10px; }
       .mrr-divider { width: 44px; height: 1px; }
     }
+    .earnings-subdivider { height: 1px; background: var(--border); margin: 16px 0; }
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      opacity: 0.6;
+      margin: 22px 4px 10px;
+    }
     .commission-row {
       padding: 12px 0;
       border-bottom: 1px solid var(--border);
@@ -414,32 +424,34 @@
       <p class="subtitle"><span class="partner-name" id="partnerName"></span> · <span id="partnerRate"></span>% commission on net revenue</p>
     </div>
 
-    <div class="row" id="balanceRow">
-      <div class="card" style="margin-bottom:14px;text-align:center;">
-        <div class="stat-num yes" id="availableBalance">$0.00</div>
-        <div class="stat-label">Available</div>
+    <div class="card" id="earningsCard">
+      <h2>Earnings</h2>
+      <div class="mrr-row" id="balanceRow">
+        <div class="mrr-stat">
+          <div class="stat-num yes" id="availableBalance">$0.00</div>
+          <div class="stat-label">Available</div>
+        </div>
+        <div class="mrr-divider"></div>
+        <div class="mrr-stat">
+          <div class="stat-num muted" id="pendingBalance">$0.00</div>
+          <div class="stat-label">Pending</div>
+        </div>
+        <div class="mrr-divider"></div>
+        <div class="mrr-stat">
+          <div class="stat-num purple" id="lifetimeBalance">$0.00</div>
+          <div class="stat-label">Lifetime</div>
+        </div>
       </div>
-      <div class="card" style="margin-bottom:14px;text-align:center;">
-        <div class="stat-num muted" id="pendingBalance">$0.00</div>
-        <div class="stat-label">Pending</div>
-      </div>
-      <div class="card" style="margin-bottom:14px;text-align:center;">
-        <div class="stat-num purple" id="lifetimeBalance">$0.00</div>
-        <div class="stat-label">Lifetime</div>
-      </div>
-    </div>
-
-    <div class="card" id="mrrCard">
-      <h2>Monthly recurring <span class="mrr-badge">MRR</span></h2>
-      <div class="mrr-row">
+      <div class="earnings-subdivider"></div>
+      <div class="mrr-row" id="mrrRow">
         <div class="mrr-stat">
           <div class="stat-num yes" id="mrrCommission">$0.00</div>
-          <div class="stat-label">Your commission / mo</div>
+          <div class="stat-label">Commission / mo</div>
         </div>
         <div class="mrr-divider"></div>
         <div class="mrr-stat">
           <div class="stat-num" id="mrrActiveSubs" style="color:#4db8ff;">0</div>
-          <div class="stat-label">Active subscribers</div>
+          <div class="stat-label">Active subs</div>
         </div>
         <div class="mrr-divider"></div>
         <div class="mrr-stat">
@@ -447,8 +459,28 @@
           <div class="stat-label">Attributed MRR</div>
         </div>
       </div>
-      <p class="hint" style="margin:12px 0 0;">Estimated monthly value of active subscribers you've referred. Yearly plans ÷ 12.</p>
     </div>
+
+    <div class="card">
+      <h2>Generate Affiliate Link</h2>
+      <p class="hint">Share your smart link — anyone who taps it and installs Fly Juggle is automatically credited to you, no code entry required.</p>
+      <div id="codesList"></div>
+      <div id="createCodeForm" class="hidden" style="margin-top:14px;">
+        <label for="newCode">New code (4–20 characters)</label>
+        <input id="newCode" type="text" maxlength="20" placeholder="SARAH30" autocapitalize="characters">
+        <button type="button" class="btn btn-block" id="createCodeBtn">Generate Affiliate Link</button>
+      </div>
+      <p id="codeMessage" class="hidden"></p>
+    </div>
+
+    <div class="card" id="payoutCard">
+      <h2>Payouts</h2>
+      <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $5. Commissions unlock 14 days after purchase (refund protection).</p>
+      <div id="payoutActions"></div>
+      <p id="payoutMessage" class="hidden"></p>
+    </div>
+
+    <p class="section-label">More details</p>
 
     <div class="card" id="revenueChartCard">
       <div class="chart-header">
@@ -468,25 +500,6 @@
         <canvas id="revenueChart" aria-label="Revenue over time"></canvas>
         <p id="chartEmpty" class="chart-empty hidden">No revenue in this period yet.</p>
       </div>
-    </div>
-
-    <div class="card" id="payoutCard">
-      <h2>Payouts</h2>
-      <p class="hint" id="payoutHint">Connect Stripe to receive earnings. Minimum withdrawal: $5. Commissions unlock 14 days after purchase (refund protection).</p>
-      <div id="payoutActions"></div>
-      <p id="payoutMessage" class="hidden"></p>
-    </div>
-
-    <div class="card">
-      <h2>Your referral codes</h2>
-      <p class="hint">Share your <strong>smart link</strong> on Instagram, TikTok, or YouTube. When someone taps it and downloads Fly Juggle, you are automatically credited — no code entry required.</p>
-      <div id="codesList"></div>
-      <div id="createCodeForm" class="hidden" style="margin-top:14px;">
-        <label for="newCode">New code (4–20 characters)</label>
-        <input id="newCode" type="text" maxlength="20" placeholder="SARAH30" autocapitalize="characters">
-        <button type="button" class="btn btn-block btn-secondary" id="createCodeBtn">Create code</button>
-      </div>
-      <p id="codeMessage" class="hidden"></p>
     </div>
 
     <div class="card">
