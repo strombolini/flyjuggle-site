@@ -923,10 +923,35 @@
       }
     }
 
+    // Recruiter attribution (/join/:CODE -> ?ref=CODE). Persisted because signup
+    // is not a single page load: the user leaves for an email verification link
+    // and returns on a fresh URL with no query string. Without this the referral
+    // is lost for every partner who verifies by email, i.e. all of them.
+    const REF_KEY = 'fj_partner_ref';
+    (function captureRef() {
+      try {
+        const ref = new URLSearchParams(window.location.search).get('ref');
+        if (ref && /^[A-Za-z0-9_]{4,20}$/.test(ref)) {
+          localStorage.setItem(REF_KEY, ref.toUpperCase());
+        }
+      } catch (_) { /* private mode / storage disabled: sign-up still works, unattributed */ }
+    })();
+
+    function storedRef() {
+      try { return localStorage.getItem(REF_KEY) || null; } catch (_) { return null; }
+    }
+
     async function linkPartnerAccount(displayName) {
       const args = displayName ? { p_display_name: displayName } : {};
+      const ref = storedRef();
+      if (ref) args.p_ref_code = ref;
       const data = await rpcCall('affiliate_link_user', args);
       if (!data?.ok) throw new Error(mapLinkError(data?.error));
+      // Only clear once the partner row actually exists, so a failed or retried
+      // link attempt doesn't silently drop the attribution.
+      if (data.created || data.linked) {
+        try { localStorage.removeItem(REF_KEY); } catch (_) {}
+      }
       return data;
     }
 
