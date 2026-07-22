@@ -504,6 +504,12 @@
       <p id="commissionsEmpty" class="empty hidden">No commissions yet. Share your link to start earning.</p>
     </div>
 
+    <div class="card hidden" id="recruitsCard">
+      <h2>Partners You Referred</h2>
+      <p class="subtitle" style="margin-top:-6px;">You earn a share of what the partners you bring on go on to make.</p>
+      <div id="recruitsList"></div>
+    </div>
+
     <div class="card">
       <h2>Payout History</h2>
       <div id="payoutsList"></div>
@@ -1209,6 +1215,35 @@
             </div>
           `;
         }).join('');
+      }
+
+      // Two-tier overrides. The card stays hidden for the overwhelming majority
+      // of partners, who have referred nobody — an empty "you referred 0 people"
+      // panel is just noise on their dashboard.
+      const recruits = data.recruits || [];
+      const recruitsCard = $('recruitsCard');
+      if (recruitsCard) {
+        if (!recruits.length) {
+          recruitsCard.classList.add('hidden');
+        } else {
+          recruitsCard.classList.remove('hidden');
+          $('recruitsList').innerHTML = recruits.map((r) => {
+            const pending = Number(r.override_pending_usd) || 0;
+            return `
+              <div class="commission-row">
+                <div>
+                  <strong>${escapeHtml(r.display_name || 'Partner')}</strong>
+                  <div class="commission-meta">
+                    joined ${escapeHtml(new Date(r.joined_at).toLocaleDateString())}
+                    · ${Number(r.sales) || 0} sale${Number(r.sales) === 1 ? '' : 's'}
+                    ${pending > 0 ? '· ' + money(pending) + ' pending' : ''}
+                  </div>
+                </div>
+                <div class="commission-amount">${money(r.override_earned_usd)}</div>
+              </div>
+            `;
+          }).join('');
+        }
       }
 
       const payouts = data.payouts || [];
