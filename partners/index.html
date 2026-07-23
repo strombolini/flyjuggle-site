@@ -936,9 +936,23 @@
     const REF_KEY = 'fj_partner_ref';
     (function captureRef() {
       try {
-        const ref = new URLSearchParams(window.location.search).get('ref');
-        if (ref && /^[A-Za-z0-9_]{4,20}$/.test(ref)) {
+        const url = new URL(window.location.href);
+        // `s` is the current (opaque) recruiter param; `ref` is the legacy name
+        // baked into links shared before the rename. Accept either; codes may be
+        // as short as 2 chars (e.g. "PS").
+        const ref = url.searchParams.get('s') || url.searchParams.get('ref');
+        if (ref && /^[A-Za-z0-9_]{2,20}$/.test(ref)) {
           localStorage.setItem(REF_KEY, ref.toUpperCase());
+        }
+        // Scrub the recruiter param from the address bar so a prospective partner
+        // cannot tell they were referred by reading the URL. ONLY these two keys
+        // are removed — any auth/PKCE params (e.g. ?code=) survive so email
+        // verification still completes.
+        if (url.searchParams.has('s') || url.searchParams.has('ref')) {
+          url.searchParams.delete('s');
+          url.searchParams.delete('ref');
+          const qs = url.searchParams.toString();
+          history.replaceState(null, '', url.pathname + (qs ? '?' + qs : '') + url.hash);
         }
       } catch (_) { /* private mode / storage disabled: sign-up still works, unattributed */ }
     })();
