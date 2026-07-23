@@ -511,6 +511,13 @@
     </div>
 
     <div class="card">
+      <h2>Referred User Emails</h2>
+      <p class="subtitle" style="margin-top:-6px;">Download a CSV of everyone you referred who shared their email in the app — with trial dates and funnel details, sortable in any spreadsheet.</p>
+      <button type="button" class="btn btn-block" id="downloadEmailsBtn">Download CSV</button>
+      <p class="hint" id="downloadEmailsMsg"></p>
+    </div>
+
+    <div class="card">
       <h2>Payout History</h2>
       <div id="payoutsList"></div>
       <p id="payoutsEmpty" class="empty hidden">No payouts yet.</p>
@@ -1656,6 +1663,48 @@
       await supabase.auth.signOut();
       showLogin();
     });
+
+    async function downloadReferredEmailsCsv() {
+      const btn = $('downloadEmailsBtn');
+      const note = $('downloadEmailsMsg');
+      note.textContent = '';
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Preparing…';
+      try {
+        const rows = await rpcCall('affiliate_referred_user_emails');
+        if (!Array.isArray(rows) || rows.length === 0) {
+          note.textContent = 'No referred users have shared an email yet.';
+          return;
+        }
+        const cols = ['email','code','platform','trial_started_at','purchase_completed_at','attributed_at','first_open_at','onboarding_completed_at','paywall_first_seen_at','email_captured_at','app_version','locale','device_model'];
+        const esc = (v) => {
+          if (v === null || v === undefined) return '';
+          const str = String(v);
+          return /[",\n\r]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+        };
+        const csv = [cols.join(',')]
+          .concat(rows.map((r) => cols.map((c) => esc(r[c])).join(',')))
+          .join('\r\n');
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'flyjuggle-referred-users-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        note.textContent = 'Downloaded ' + rows.length + ' referred user' + (rows.length === 1 ? '' : 's') + '.';
+      } catch (e) {
+        note.textContent = 'Could not prepare the export. Try again in a moment.';
+        plog('csv export failed', e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    }
+    $('downloadEmailsBtn').addEventListener('click', downloadReferredEmailsCsv);
 
     initSupabase();
   </script>
