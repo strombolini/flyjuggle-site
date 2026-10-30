@@ -550,7 +550,8 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNscGt3enhlamRndmlmaWFrZHJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzE1NTQsImV4cCI6MjA5NDk0NzU1NH0.ZBk2y5kI3b7FTHTUc-uNXg1bALEDjYKQRscR-11pylc';
     const FUNCTIONS_BASE = SUPABASE_URL + '/functions/v1';
     const MIN_PAYOUT_USD = 5;
-    // Mirrors v_max in affiliate_create_code (one link per video needs room).
+    // Default per-partner link cap; the real one is partner.max_codes
+    // (affiliate_partners.max_codes, enforced in affiliate_create_code).
     const MAX_ACTIVE_CODES = 25;
 
     let supabase;
@@ -1257,7 +1258,8 @@
       }
 
       const activeCodes = codes.filter((c) => c.active !== false).length;
-      $('createCodeForm').classList.toggle('hidden', activeCodes >= MAX_ACTIVE_CODES || p.status !== 'active');
+      const maxCodes = Number(p.max_codes) || MAX_ACTIVE_CODES;
+      $('createCodeForm').classList.toggle('hidden', activeCodes >= maxCodes || p.status !== 'active');
 
       const commissions = data.commissions || [];
       const commList = $('commissionsList');
